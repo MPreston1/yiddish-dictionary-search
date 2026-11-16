@@ -838,6 +838,29 @@ async function fetchJNWLivePaged(query, cap) {
     return {entries: all, numFound: numFound ?? all.length, firstPageError, firstPageParseFailed};
 }
 
+// What the JNW count line says when it isn't showing match counts: which
+// source the next search will use (like YCD's "N entries loaded").
+let jnwCountShowsStatus = true;
+
+function jnwSourceStatus() {
+    const n = Array.isArray(window._jnwBackupEntries) ? window._jnwBackupEntries.length : 0;
+    if (jnwOfflineModeActive() || (navigator.onLine === false && n > 0)) {
+        return `${n.toLocaleString()} entries loaded (searching local backup)`;
+    }
+    if (navigator.onLine === false) return 'no internet connection';
+    return 'searching remote database';
+}
+
+function showJNWStatus() {
+    document.getElementById('count-jnw').textContent = jnwSourceStatus();
+    jnwCountShowsStatus = true;
+}
+
+function clearJNWCount() {
+    document.getElementById('count-jnw').textContent = '';
+    jnwCountShowsStatus = false;
+}
+
 async function searchJNW(query, opts = {}) {
     const {wholeWord = false, exactPhrase = false, displayAll = false} = opts;
     const token = ++jnwSearchToken; // lets a newer search cancel an older, in-flight one
@@ -846,12 +869,12 @@ async function searchJNW(query, opts = {}) {
 
     if (!query) {
         container.innerHTML = '<p class="message">Type a word and tap Search.</p>';
-        countEl.textContent = '';
+        showJNWStatus();
         return;
     }
 
     container.innerHTML = '<p class="message"><span class="spinner"></span> Searching JNW…</p>';
-    countEl.textContent = '';
+    showJNWStatus();
 
     const webUrl = jnwWebUrl(query);
     // Use the local backup if the person turned on offline mode in Settings,
@@ -868,6 +891,7 @@ async function searchJNW(query, opts = {}) {
         } else {
             container.innerHTML = '<div class="jnw-fallback">No internet connection, and no local JNW backup is loaded. ' +
                 'Import or crawl a backup in Settings to search JNW offline.</div>';
+            clearJNWCount();
             return;
         }
     }
@@ -890,6 +914,7 @@ async function searchJNW(query, opts = {}) {
             if (result.firstPageError) {
                 container.innerHTML = `<div class="jnw-fallback">Couldn't reach JNW (${escapeHTML(result.firstPageError.message)}).
         <a href="${webUrl}" target="_blank" rel="noopener">Search on jiddischwoordenboek.nl ↗</a></div>`;
+                clearJNWCount();
                 return;
             }
 
@@ -905,6 +930,7 @@ async function searchJNW(query, opts = {}) {
           <summary style="cursor:pointer;">Show raw response received (for debugging)</summary>
           <textarea readonly style="width:100%;height:200px;font-size:10px;margin-top:6px;" onclick="this.select()">${escapeHTML(preview)}</textarea>
         </details></div>`;
+                clearJNWCount();
                 return;
             }
 
@@ -937,6 +963,7 @@ async function searchJNW(query, opts = {}) {
 
     if (!filtered.length) {
         container.innerHTML = '<p class="message">No matches found.</p>';
+        jnwCountShowsStatus = false;
         countEl.textContent = (displayAll
             ? `0 matches for "${query}"`
             : `0 of ${entries.length.toLocaleString()} fetched match${entries.length !== 1 ? 'es' : ''}${fetchedNote}`) + offlineSuffix;
@@ -948,6 +975,7 @@ async function searchJNW(query, opts = {}) {
         : (filtered.length < numFound
             ? `${filtered.length.toLocaleString()} of ${numFound.toLocaleString()} matches shown`
             : `${filtered.length.toLocaleString()} match${filtered.length !== 1 ? 'es' : ''} for "${query}"`);
+    jnwCountShowsStatus = false;
     countEl.textContent = shown + offlineSuffix;
 
     const frag = document.createDocumentFragment();
@@ -1272,7 +1300,16 @@ function updateJNWOfflineUI() {
     downloadBtn.disabled = !hasBackup;
 
     titleEl.textContent = jnwOfflineModeActive() ? 'JNW (offline backup)' : 'JNW (jiddischwoordenboek.nl)';
+    if (jnwCountShowsStatus) showJNWStatus();
 }
+
+// Connection changes alter which source a search would use.
+window.addEventListener('online', () => {
+    if (jnwCountShowsStatus) showJNWStatus();
+});
+window.addEventListener('offline', () => {
+    if (jnwCountShowsStatus) showJNWStatus();
+});
 
 function setJNWOfflineMode(on) {
     jnwOfflineMode = on;
