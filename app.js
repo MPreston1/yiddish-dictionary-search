@@ -845,7 +845,7 @@ let jnwCountShowsStatus = true;
 function jnwSourceStatus() {
     const n = Array.isArray(window._jnwBackupEntries) ? window._jnwBackupEntries.length : 0;
     if (jnwOfflineModeActive() || (navigator.onLine === false && n > 0)) {
-        return `${n.toLocaleString()} entries loaded (searching local backup)`;
+        return `${n.toLocaleString()} entries loaded (offline backup)`;
     }
     if (navigator.onLine === false) return 'no internet connection';
     return 'searching remote database';
@@ -1282,7 +1282,6 @@ function updateJNWOfflineUI() {
     const toggleEl = document.getElementById('jnw-offline-toggle');
     const clearBtn = document.getElementById('jnw-clear-backup-btn');
     const downloadBtn = document.getElementById('jnw-backup-download');
-    const titleEl = document.getElementById('jnw-col-title');
     const hasBackup = !!(jnwBackupMeta && Array.isArray(window._jnwBackupEntries) && window._jnwBackupEntries.length);
 
     if (hasBackup) {
@@ -1299,17 +1298,29 @@ function updateJNWOfflineUI() {
     }
     downloadBtn.disabled = !hasBackup;
 
-    titleEl.textContent = jnwOfflineModeActive() ? 'JNW (offline backup)' : 'JNW (jiddischwoordenboek.nl)';
     if (jnwCountShowsStatus) showJNWStatus();
+}
+
+// The YCD / JNW title links can't work without a connection, so grey them out.
+function updateDictLinks() {
+    const offline = navigator.onLine === false;
+    document.querySelectorAll('a.dict-link').forEach(a => {
+        a.style.pointerEvents = offline ? 'none' : '';
+        a.style.opacity = offline ? '.45' : '';
+        if (offline) a.setAttribute('aria-disabled', 'true'); else a.removeAttribute('aria-disabled');
+    });
 }
 
 // Connection changes alter which source a search would use.
 window.addEventListener('online', () => {
+    updateDictLinks();
     if (jnwCountShowsStatus) showJNWStatus();
 });
 window.addEventListener('offline', () => {
+    updateDictLinks();
     if (jnwCountShowsStatus) showJNWStatus();
 });
+updateDictLinks();
 
 function setJNWOfflineMode(on) {
     jnwOfflineMode = on;
