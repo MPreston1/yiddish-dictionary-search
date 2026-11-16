@@ -1,11 +1,29 @@
-// Offline support: the page is cached after each successful visit and served
-// from cache when the network is unavailable or too slow. Requests to other
-// sites (dictionary sources, CORS proxies) are never touched.
-const CACHE = 'yiddish-dictionary-v1';
-const NETWORK_TIMEOUT_MS = 3000; // on a weak connection, give up on the network after this and use the cached copy
+// Offline support. The app "shell" (index.html + style.css + app.js) is cached
+// as one set and always served from that set, so the HTML, CSS and JS can never
+// come from different releases. Each time the app is opened, the service worker
+// re-downloads all three files in the background (bypassing the browser's HTTP
+// cache) and swaps in the new set only if every file arrived. A change you
+// deploy therefore shows up the next time the app is opened after it has
+// been loaded once; no version numbers to bump.
+// Requests to other sites (dictionary sources, CORS proxies) are never touched.
+const CACHE = 'yiddish-dictionary';
+const SHELL = ['./', 'style.css', 'app.js'];
+
+let refreshing = null;
+function refreshShell() {
+  if (!refreshing) {
+    refreshing = (async () => {
+      const responses = await Promise.all(SHELL.map(u => fetch(u, { cache: 'no-cache' })));
+      if (!responses.every(r => r.ok)) throw new Error('shell download incomplete');
+      const cache = await caches.open(CACHE);
+      await Promise.all(SHELL.map((u, i) => cache.put(u, responses[i])));
+    })().finally(() => { refreshing = null; });
+  }
+  return refreshing;
+}
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.add('./')).catch(() => {}));
+  e.waitUntil(refreshShell().catch(() => {}));
   self.skipWaiting();
 });
 
@@ -19,30 +37,19 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
 
-  const fromCache = () =>
-    caches.match(req, { ignoreSearch: true }).then(hit =>
-      hit || (req.mode === 'navigate' ? caches.match('./') : undefined)
-    );
+  const isPage = req.mode === 'navigate';
+  const isShellFile = SHELL.some(u => new URL(u, self.registration.scope).href === url.href);
+  if (!isPage && !isShellFile) return;
 
-  // Network-first, but if it hasn't answered within the timeout, serve the
-  // cached copy. The network request keeps going in the background and
-  // refreshes the cache when it finishes, so the next load is up to date.
-  const network = fetch(req).then(res => {
-    if (res.ok) {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(req, copy));
-    }
-    return res;
-  });
-  e.waitUntil(network.catch(() => {}));
-
-  const timeout = new Promise(resolve => setTimeout(() => resolve(null), NETWORK_TIMEOUT_MS));
-
+  // Serve from the cached set (the page is always the cached './'); fall back to
+  // the network only if nothing is cached yet.
   e.respondWith(
-    Promise.race([network, timeout])
-      .then(res => res || fromCache().then(hit => hit || network)) // nothing cached yet: keep waiting for the network
-      .catch(() => fromCache().then(hit => hit || Response.error()))
+    caches.match(isPage ? './' : req).then(hit => hit || fetch(req))
   );
+
+  // Opening the app triggers a background check for a newer set.
+  if (isPage) e.waitUntil(refreshShell().catch(() => {}));
 });
