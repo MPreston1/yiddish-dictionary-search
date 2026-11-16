@@ -38,7 +38,8 @@
     </select></label>
     <label><input type="checkbox" id="whole-word"> Whole word</label>
     <label><input type="checkbox" id="exact-phrase" title="Match words adjacent and in order"> Exact phrase</label>
-    <label><input type="checkbox" id="jnw-display-all"> Display all results including related terms (JNW only)</label>
+    <!-- Hidden for now and always on; remove style="display:none" (and "checked" if desired) to bring the option back -->
+    <label style="display:none"><input type="checkbox" id="jnw-display-all" checked> Display all results including related terms (JNW only)</label>
   </div>
 
   <!-- Results: two columns, YCD (local import) + JNW (live external search) -->
