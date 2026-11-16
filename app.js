@@ -558,9 +558,16 @@ function applyDictScope() {
     syncScopeUI();
 
     // Re-run the current search (if any) under the new scope so the visible
-    // column(s) reflect it immediately rather than showing stale results.
-    doSearch();
+    // column(s) reflect it. Wait until the browser has painted the button/tab
+    // change first, so a button press is acknowledged before the (possibly slow)
+    // search starts. Rapid presses collapse into a single search.
+    clearTimeout(scopeSearchTimer);
+    requestAnimationFrame(() => {
+        scopeSearchTimer = setTimeout(doSearch, 0);
+    });
 }
+
+let scopeSearchTimer = null;
 
 // ── Dictionary toggle buttons + phone result tabs ─────────────────────────────
 // The hidden #dict-scope <select> still holds the scope ('both' | 'ycd' | 'jnw');
