@@ -734,3 +734,56 @@ mark {
         transform: rotate(360deg);
     }
 }
+
+
+/* ── EYD (third dictionary, via private relay) ── */
+.ceyd-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0 2px;
+}
+
+.ceyd-chip {
+    font: inherit;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ceyd-chip.sel {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.ceyd-row {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.ceyd-row:last-child {
+    border-bottom: 0;
+}
+
+.ceyd-row.sub .term {
+    padding-left: 12px;
+}
+
+.term .translit {
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.ceyd-tr {
+    display: inline-block;
+    direction: ltr;
+    margin-right: 10px;
+    font-size: 12px;
+    color: var(--muted);
+}

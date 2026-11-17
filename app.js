@@ -461,7 +461,7 @@ function doSearch() {
     const wholeWord = document.getElementById('whole-word').checked;
     const exactPhrase = document.getElementById('exact-phrase').checked;
     const jnwDisplayAll = document.getElementById('jnw-display-all').checked;
-    const scope = document.getElementById('dict-scope').value; // 'both' | 'ycd' | 'jnw'
+    const enabled = enabledDicts();
 
     // Kick off the JNW live search in parallel; it has its own loading/empty
     // states. JNW's own API has no scope/whole-word/exact-phrase options, so
@@ -469,11 +469,12 @@ function doSearch() {
     // client-side (see filterJNWEntriesByTerm); "term or definition" scope
     // doesn't apply to JNW at all, since it always searches across its own
     // fields.
-    if (scope !== 'ycd') {
+    if (enabled.includes('jnw')) {
         searchJNW(query, {wholeWord, exactPhrase, displayAll: jnwDisplayAll});
     }
+    if (enabled.includes('ceyd')) searchCeyd(query);
 
-    if (scope === 'jnw') {
+    if (!enabled.includes('ycd')) {
         // YCD column is hidden; nothing more to do on that side.
         closeFind(true);
         return;
@@ -542,45 +543,64 @@ function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// ── Dictionary scope (both / YCD only / JNW only) ──────────────────────────────
-function applyDictScope() {
-    const scope = document.getElementById('dict-scope').value;
-    const colYcd = document.getElementById('col-ycd');
-    const colJnw = document.getElementById('col-jnw');
+// ── Dictionaries: which are pressed, which are available ──────────────────────
+// YCD and JNW are always available. EYD (the English-Yiddish dictionary) is
+// reached through a private relay and only appears while that relay answers.
+const DICTS = ['ycd', 'jnw', 'ceyd'];
+let dictOn = {ycd: true, jnw: true, ceyd: true};   // what the user has pressed
+let ceydAvailable = false;                            // is the relay reachable right now?
+let activeResultTab = 'ycd';
+let scopeSearchTimer = null;
 
-    colYcd.classList.toggle('hidden-col', scope === 'jnw');
-    colJnw.classList.toggle('hidden-col', scope === 'ycd');
+function enabledDicts() {
+    const on = DICTS.filter(d => dictOn[d] && (d !== 'ceyd' || ceydAvailable));
+    return on.length ? on : ['ycd'];
+}
 
+function loadDictState() {
     try {
-        localStorage.setItem('dictScope', scope);
+        const saved = JSON.parse(localStorage.getItem('dictSet') || 'null');
+        if (saved && typeof saved === 'object') {
+            for (const d of DICTS) if (typeof saved[d] === 'boolean') dictOn[d] = saved[d];
+            return;
+        }
+        const old = localStorage.getItem('dictScope');   // from before there were three dictionaries
+        if (old === 'ycd') dictOn.jnw = false;
+        if (old === 'jnw') dictOn.ycd = false;
+    } catch (e) {
+    }
+}
+
+// Update columns, buttons and tabs to match the current state (no search).
+function refreshDictUI() {
+    if (!DICTS.some(d => dictOn[d] && (d !== 'ceyd' || ceydAvailable))) dictOn.ycd = true;
+    const enabled = enabledDicts();
+    for (const d of DICTS) {
+        document.getElementById('col-' + d).classList.toggle('hidden-col', !enabled.includes(d));
+    }
+    try {
+        localStorage.setItem('dictSet', JSON.stringify(dictOn));
     } catch (e) {
     }
     syncScopeUI();
+}
 
-    // Re-run the current search (if any) under the new scope so the visible
-    // column(s) reflect it. Wait until the browser has painted the button/tab
-    // change first, so a button press is acknowledged before the (possibly slow)
-    // search starts. Rapid presses collapse into a single search.
+function applyDictScope() {
+    refreshDictUI();
+    // Re-run the current search (if any) under the new selection. Wait until the
+    // browser has painted the button/tab change first, so a press is acknowledged
+    // before the (possibly slow) search starts. Rapid presses collapse into one search.
     clearTimeout(scopeSearchTimer);
     requestAnimationFrame(() => {
         scopeSearchTimer = setTimeout(doSearch, 0);
     });
 }
 
-let scopeSearchTimer = null;
-
-// ── Dictionary toggle buttons + phone result tabs ─────────────────────────────
-// The hidden #dict-scope <select> still holds the scope ('both' | 'ycd' | 'jnw');
-// the buttons just drive it. At least one dictionary always stays pressed.
-let activeResultTab = 'ycd';
-
+// At least one available dictionary always stays pressed.
 function toggleDict(which) {
-    const sel = document.getElementById('dict-scope');
-    let ycd = sel.value !== 'jnw';
-    let jnw = sel.value !== 'ycd';
-    if (which === 'ycd') ycd = !ycd; else jnw = !jnw;
-    if (!ycd && !jnw) return;
-    sel.value = ycd && jnw ? 'both' : (ycd ? 'ycd' : 'jnw');
+    const next = {...dictOn, [which]: !dictOn[which]};
+    if (!DICTS.some(d => next[d] && (d !== 'ceyd' || ceydAvailable))) return;
+    dictOn = next;
     applyDictScope();
 }
 
@@ -591,30 +611,27 @@ function showResultTab(which) {
     if (document.getElementById('findbar').classList.contains('open')) findReset();
 }
 
-// Reflect the scope in the buttons, and set up the phone tabs.
+// Reflect the selection in the buttons, and set up the phone tabs.
 function syncScopeUI() {
-    const scope = document.getElementById('dict-scope').value;
-    const ycdOn = scope !== 'jnw';
-    const jnwOn = scope !== 'ycd';
-    if (scope === 'ycd') activeResultTab = 'ycd';
-    if (scope === 'jnw') activeResultTab = 'jnw';
-
-    document.getElementById('toggle-ycd').setAttribute('aria-pressed', String(ycdOn));
-    document.getElementById('toggle-jnw').setAttribute('aria-pressed', String(jnwOn));
-
-    document.getElementById('results-columns').classList.toggle('tabs-on', scope === 'both');
-    for (const d of ['ycd', 'jnw']) {
-        const isActive = activeResultTab === d;
-        document.getElementById('col-' + d).classList.toggle('active-tab', isActive);
+    const enabled = enabledDicts();
+    if (!enabled.includes(activeResultTab)) activeResultTab = enabled[0];
+    document.getElementById('toggle-ceyd').hidden = !ceydAvailable;
+    document.getElementById('results-columns').classList.toggle('tabs-on', enabled.length >= 2);
+    for (const d of DICTS) {
+        const on = enabled.includes(d);
+        document.getElementById('toggle-' + d).setAttribute('aria-pressed', String(on));
         const tab = document.getElementById('tab-' + d);
+        tab.hidden = !on;
+        const isActive = activeResultTab === d;
         tab.classList.toggle('active', isActive);
         tab.setAttribute('aria-selected', String(isActive));
+        document.getElementById('col-' + d).classList.toggle('active-tab', isActive);
     }
 }
 
 // Mirror each column's result count (just the number) into its phone tab.
 function setupTabCounts() {
-    for (const d of ['ycd', 'jnw']) {
+    for (const d of DICTS) {
         const src = document.getElementById('count-' + d);
         const dst = document.getElementById('tabcount-' + d);
         const update = () => {
@@ -624,6 +641,192 @@ function setupTabCounts() {
         new MutationObserver(update).observe(src, {childList: true, characterData: true, subtree: true});
         update();
     }
+}
+
+// ── EYD (English-Yiddish dictionary) via the private relay ────────────────────
+function getCeydUrl() {
+    try {
+        return (localStorage.getItem('ceydRelayUrl') || '').trim().replace(/\/+$/, '');
+    } catch (e) {
+        return '';
+    }
+}
+
+function ceydTranslit() {
+    try {
+        return localStorage.getItem('ceydTranslit') === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
+function ceydStatusText() {
+    if (!getCeydUrl()) return 'Not set up. EYD stays hidden.';
+    return ceydAvailable ? 'Connected.' : "Can't reach the relay (is Tailscale on?). EYD stays hidden until it can.";
+}
+
+// Ask the relay whether it is there. Fails quietly (and EYD stays hidden) when it isn't.
+async function checkCeyd() {
+    const base = getCeydUrl();
+    let ok = false;
+    if (base) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2000);
+        try {
+            const r = await fetch(base + '/api/ping', {signal: ctrl.signal, cache: 'no-store'});
+            const j = await r.json();
+            ok = r.ok && j.ok === true && j.service === 'ceyd-relay';
+        } catch (e) {
+        }
+        clearTimeout(timer);
+    }
+    const changed = ok !== ceydAvailable;
+    ceydAvailable = ok;
+    if (changed) {
+        refreshDictUI();
+        const query = document.getElementById('search-input').value.trim();
+        if (ok && query && enabledDicts().includes('ceyd')) searchCeyd(query);
+    }
+    const st = document.getElementById('ceyd-status');
+    if (st) st.textContent = ceydStatusText();
+    return ok;
+}
+
+window.addEventListener('online', checkCeyd);
+window.addEventListener('offline', () => {
+    if (ceydAvailable) {
+        ceydAvailable = false;
+        refreshDictUI();
+    }
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkCeyd();
+});
+
+let ceydToken = 0;
+
+async function searchCeyd(query, opts = {}) {
+    const container = document.getElementById('results-ceyd');
+    const countEl = document.getElementById('count-ceyd');
+    const token = ++ceydToken;
+    countEl.textContent = '';
+    if (!query) {
+        container.innerHTML = '<p class="message">Type a word and tap Search.</p>';
+        return;
+    }
+    container.innerHTML = '<p class="message"><span class="spinner"></span> Searching EYD…</p>';
+    const p = new URLSearchParams({q: query, lang: opts.lang || 'auto', translit: ceydTranslit() ? '1' : '0'});
+    if (opts.id) p.set('id', opts.id);
+    if (opts.extend) p.set('extend', '1');
+    try {
+        const r = await fetch(getCeydUrl() + '/api/search?' + p, {cache: 'no-store'});
+        const d = await r.json();
+        if (token !== ceydToken) return;
+        if (!r.ok) throw new Error(d.error || r.status);
+        renderCeyd(d, container, countEl);
+    } catch (e) {
+        if (token !== ceydToken) return;
+        container.innerHTML = '';
+        const div = document.createElement('div');
+        div.className = 'jnw-fallback';
+        div.textContent = "Couldn't search the English-Yiddish dictionary: " + e.message;
+        container.append(div);
+    }
+}
+
+function renderCeyd(d, container, countEl) {
+    container.textContent = '';
+    const real = d.choices.filter(c => !c.more);
+    if (!d.entries.length) {
+        container.innerHTML = '<p class="message">No matches found.</p>';
+        countEl.textContent = '';
+        return;
+    }
+    countEl.textContent = `${real.length.toLocaleString()} match${real.length !== 1 ? 'es' : ''} for "${d.query}"`;
+    if (d.choices.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'ceyd-choices';
+        for (const c of d.choices) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ceyd-chip' + (c.selected ? ' sel' : '');
+            b.textContent = c.more ? 'More…' : c.label;
+            b.onclick = () => searchCeyd(d.query, {lang: d.lang, id: c.id, extend: c.extend});
+            wrap.append(b);
+        }
+        container.append(wrap);
+    }
+    for (const rows of d.entries) {
+        const entry = document.createElement('div');
+        entry.className = 'entry';
+        for (const r of rows) {
+            const row = document.createElement('div');
+            row.className = 'ceyd-row' + (r.sub ? ' sub' : '');
+            const en = document.createElement('div');
+            en.className = 'term';
+            en.innerHTML = r.en;
+            row.append(en);
+            if (r.yi || r.tr) {
+                const yi = document.createElement('div');
+                yi.className = 'defpara';
+                yi.innerHTML = r.yi;
+                if (r.tr) {
+                    const tr = document.createElement('span');
+                    tr.className = 'ceyd-tr';
+                    tr.textContent = r.tr;
+                    yi.append(tr);
+                }
+                row.append(yi);
+            }
+            entry.append(row);
+        }
+        container.append(entry);
+    }
+    const src = document.createElement('div');
+    src.className = 'col-count';
+    src.style.textAlign = 'center';
+    src.textContent = '© Comprehensive English-Yiddish Dictionary';
+    container.append(src);
+}
+
+// Settings for EYD
+function syncCeydSettings() {
+    document.getElementById('ceyd-url-input').value = getCeydUrl();
+    document.getElementById('ceyd-translit').checked = ceydTranslit();
+    document.getElementById('ceyd-status').textContent = ceydStatusText();
+}
+
+async function saveCeydUrl() {
+    const input = document.getElementById('ceyd-url-input');
+    let v = input.value.trim().replace(/\/+$/, '');
+    if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
+    try {
+        localStorage.setItem('ceydRelayUrl', v);
+    } catch (e) {
+    }
+    input.value = v;
+    document.getElementById('ceyd-status').textContent = 'Checking…';
+    await checkCeyd();
+}
+
+function clearCeydUrl() {
+    try {
+        localStorage.removeItem('ceydRelayUrl');
+    } catch (e) {
+    }
+    document.getElementById('ceyd-url-input').value = '';
+    ceydAvailable = false;
+    refreshDictUI();
+    document.getElementById('ceyd-status').textContent = ceydStatusText();
+}
+
+function setCeydTranslit(on) {
+    try {
+        localStorage.setItem('ceydTranslit', on ? '1' : '0');
+    } catch (e) {
+    }
+    const query = document.getElementById('search-input').value.trim();
+    if (query && enabledDicts().includes('ceyd')) searchCeyd(query);
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -1381,6 +1584,7 @@ function openSettings() {
     document.getElementById('settings-overlay').classList.add('open');
     refreshStatus();
     updateJNWOfflineUI();
+    syncCeydSettings();
 }
 
 function closeSettings() {
@@ -2068,17 +2272,10 @@ updateYiddishUI();
 // Restore the last-used dictionary scope (if any) and show/hide columns
 // accordingly, without triggering a search on load.
 (() => {
-    try {
-        const savedScope = localStorage.getItem('dictScope');
-        if (savedScope === 'ycd' || savedScope === 'jnw' || savedScope === 'both') {
-            document.getElementById('dict-scope').value = savedScope;
-            document.getElementById('col-ycd').classList.toggle('hidden-col', savedScope === 'jnw');
-            document.getElementById('col-jnw').classList.toggle('hidden-col', savedScope === 'ycd');
-        }
-    } catch (e) {
-    }
-    syncScopeUI();
+    loadDictState();
+    refreshDictUI();
     setupTabCounts();
+    checkCeyd();            // shows EYD only if the private relay answers
 })();
 
 // loadData is now async (IndexedDB), so we await it before refreshing the UI.
