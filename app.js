@@ -549,6 +549,7 @@ function escapeRegex(s) {
 const DICTS = ['ycd', 'jnw', 'ceyd'];
 let dictOn = {ycd: true, jnw: true, ceyd: true};   // what the user has pressed
 let ceydAvailable = false;                            // is the relay reachable right now?
+let ceydReason = '';                                  // why the last check failed (shown in Settings)
 let activeResultTab = 'ycd';
 let scopeSearchTimer = null;
 
@@ -662,21 +663,31 @@ function ceydTranslit() {
 
 function ceydStatusText() {
     if (!getCeydUrl()) return 'Not set up. EYD stays hidden.';
-    return ceydAvailable ? 'Connected.' : "Can't reach the relay (is Tailscale on?). EYD stays hidden until it can.";
+    if (ceydAvailable) return 'Connected.';
+    return `Can't reach the relay (${ceydReason || 'is Tailscale on?'}). EYD stays hidden until it can.`;
 }
 
 // Ask the relay whether it is there. Fails quietly (and EYD stays hidden) when it isn't.
 async function checkCeyd() {
     const base = getCeydUrl();
     let ok = false;
+    ceydReason = '';
     if (base) {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2000);
+        const timer = setTimeout(() => ctrl.abort(), 4000);
         try {
             const r = await fetch(base + '/api/ping', {signal: ctrl.signal, cache: 'no-store'});
-            const j = await r.json();
-            ok = r.ok && j.ok === true && j.service === 'ceyd-relay';
+            if (!r.ok) {
+                ceydReason = `the relay answered HTTP ${r.status}` + (r.status === 404 ? ' - is it updated and restarted?' : '');
+            } else {
+                const j = await r.json();
+                ok = j.ok === true && j.service === 'ceyd-relay';
+                if (!ok) ceydReason = 'unexpected reply from that address';
+            }
         } catch (e) {
+            ceydReason = e.name === 'AbortError'
+                ? 'no answer within 4 seconds - is Tailscale on?'
+                : 'blocked or unreachable - not on Tailscale, or the browser refused the cross-site request';
         }
         clearTimeout(timer);
     }
