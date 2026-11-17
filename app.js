@@ -765,10 +765,17 @@ function renderCeyd(d, container, countEl) {
     if (d.choices.length) {
         const wrap = document.createElement('div');
         wrap.className = 'ceyd-choices';
+        let sepDone = false;
         for (const c of d.choices) {
+            if (!c.top && !sepDone && d.choices.some(x => x.top)) {
+                sepDone = true;
+                const sep = document.createElement('div');
+                sep.className = 'ceyd-sep';
+                wrap.append(sep);
+            }
             const b = document.createElement('button');
             b.type = 'button';
-            b.className = 'ceyd-chip' + (c.selected ? ' sel' : '');
+            b.className = 'ceyd-chip' + (c.top ? ' top' : '') + (c.selected ? ' sel' : '');
             b.textContent = c.more ? 'More…' : c.label;
             b.onclick = () => searchCeyd(d.query, {lang: d.lang, id: c.id, extend: c.extend});
             wrap.append(b);

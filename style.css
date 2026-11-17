@@ -796,3 +796,21 @@ mark {
     font-size: 12px;
     color: var(--muted);
 }
+
+/* Closest hits (above the site's line) stand out from the alphabetical list */
+.ceyd-chip.top {
+    font-weight: 700;
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.ceyd-chip.top.sel {
+    color: #fff;
+}
+
+.ceyd-sep {
+    flex-basis: 100%;
+    height: 0;
+    margin: 2px 0;
+    border-top: 1px solid var(--border);
+}
