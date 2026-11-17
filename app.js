@@ -697,6 +697,7 @@ async function checkCeyd() {
         refreshDictUI();
         const query = document.getElementById('search-input').value.trim();
         if (ok && query && enabledDicts().includes('ceyd')) searchCeyd(query);
+        else if (ok) showCeydStatus();
     }
     const st = document.getElementById('ceyd-status');
     if (st) st.textContent = ceydStatusText();
@@ -714,13 +715,19 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') checkCeyd();
 });
 
+// Like JNW's status line: shown before a search and while one is running, then
+// replaced by the match count.
+function showCeydStatus() {
+    document.getElementById('count-ceyd').textContent = 'searching remote database';
+}
+
 let ceydToken = 0;
 
 async function searchCeyd(query, opts = {}) {
     const container = document.getElementById('results-ceyd');
     const countEl = document.getElementById('count-ceyd');
     const token = ++ceydToken;
-    countEl.textContent = '';
+    showCeydStatus();
     if (!query) {
         container.innerHTML = '<p class="message">Type a word and tap Search.</p>';
         return;
@@ -737,6 +744,7 @@ async function searchCeyd(query, opts = {}) {
         renderCeyd(d, container, countEl);
     } catch (e) {
         if (token !== ceydToken) return;
+        countEl.textContent = '';
         container.innerHTML = '';
         const div = document.createElement('div');
         div.className = 'jnw-fallback';
@@ -766,6 +774,8 @@ function renderCeyd(d, container, countEl) {
             wrap.append(b);
         }
         container.append(wrap);
+        const sel = wrap.querySelector('.sel');
+        if (sel) wrap.scrollTop = Math.max(0, sel.offsetTop - 8);
     }
     for (const rows of d.entries) {
         const entry = document.createElement('div');
