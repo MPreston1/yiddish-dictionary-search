@@ -814,3 +814,19 @@ mark {
     margin: 2px 0;
     border-top: 1px solid var(--border);
 }
+
+/* Phones: Whole word / Exact phrase stacked in a column to the right of the dictionary buttons */
+@media (max-width: 480px) {
+    #options-row {
+        display: grid;
+        grid-template-columns: auto auto;
+        justify-content: start;
+        align-items: center;
+        column-gap: 14px;
+        row-gap: 6px;
+    }
+
+    #options-row #dict-toggles {
+        grid-row: 1 / span 2;
+    }
+}
