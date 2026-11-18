@@ -681,7 +681,7 @@ async function checkCeyd() {
                 ceydReason = `the relay answered HTTP ${r.status}` + (r.status === 404 ? ' - is it updated and restarted?' : '');
             } else {
                 const j = await r.json();
-                ok = j.ok === true && j.service === 'ceyd-relay';
+                ok = j.ok === true && (j.service === 'dictionary-relay' || j.service === 'ceyd-relay');
                 if (!ok) ceydReason = 'unexpected reply from that address';
             }
         } catch (e) {
