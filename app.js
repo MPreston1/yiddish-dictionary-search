@@ -1026,23 +1026,56 @@ async function fetchWithCorsFallback(url) {
     if (ceydAvailable && relayCanFetch) {
         attempts.splice(1, 0, {
             name: 'Pi relay',
-            fetch: () => fetchWithTimeout(`${getCeydUrl()}/api/fetch?url=${encodeURIComponent(url)}`, {}, 12000)
+            fetch: () => fetchWithTimeout(`${getCeydUrl()}/api/fetch?url=${encodeURIComponent(url)}`,
+                {headers: {'X-Target-Accept': 'application/json'}}, 12000)
         });
     }
 
+    // A route only counts if what came back looks like JNW's JSON. Otherwise (a block page,
+    // an HTML shell, a proxy's error page with a 200) the next route gets its turn. If no
+    // route returns JSON, the first odd response is still handed back, so the "couldn't
+    // parse" panel can show what was received.
+    const looksLikeJnwJson = text => {
+        try {
+            const data = JSON.parse(text);
+            return !!data && Array.isArray(data.results) && !!data.summary;
+        } catch (e) {
+            return false;
+        }
+    };
+
     const errors = [];
+    let oddResponse = null;
     for (const attempt of attempts) {
         try {
             const resp = await attempt.fetch();
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            if (!resp.ok) {
+                let why = `HTTP ${resp.status}`;
+                if (attempt.name === 'Pi relay') {        // the relay says why in its JSON body
+                    try {
+                        const j = await resp.clone().json();
+                        if (j && j.error) why += ` (${j.error})`;
+                    } catch (e) {
+                    }
+                }
+                throw new Error(why);
+            }
             const text = await resp.text();
             if (!text) throw new Error('empty response');
+            if (!looksLikeJnwJson(text)) {
+                if (!oddResponse) oddResponse = {name: attempt.name, text};
+                throw new Error('not JNW JSON');
+            }
             fetchWithCorsFallback.lastVia = attempt.name; // diagnostic only — which channel actually served this
             return text;
         } catch (err) {
             const msg = err.name === 'AbortError' ? 'timed out' : err.message;
             errors.push(`${attempt.name}: ${msg}`);
         }
+    }
+    if (oddResponse) {
+        fetchWithCorsFallback.lastVia = oddResponse.name;
+        return oddResponse.text;
     }
     throw new Error(errors.join('; '));
 }
