@@ -550,6 +550,7 @@ const DICTS = ['ycd', 'jnw', 'ceyd'];
 let dictOn = {ycd: true, jnw: true, ceyd: true};   // what the user has pressed
 let ceydAvailable = false;                            // is the relay reachable right now?
 let ceydReason = '';                                  // why the last check failed (shown in Settings)
+let relayCanFetch = false;                            // does the relay also offer /api/fetch (used for JNW)?
 let activeResultTab = 'ycd';
 let scopeSearchTimer = null;
 
@@ -645,12 +646,19 @@ function setupTabCounts() {
 }
 
 // ── EYD (English-Yiddish dictionary) via the private relay ────────────────────
-function getCeydUrl() {
+// The address typed in Settings. Blank when this page is served by the Pi itself.
+function getSavedCeydUrl() {
     try {
         return (localStorage.getItem('ceydRelayUrl') || '').trim().replace(/\/+$/, '');
     } catch (e) {
         return '';
     }
+}
+
+// The relay to use: the saved address or, on a page the relay serves itself
+// (it adds window.PI_HOSTED), that same server.
+function getCeydUrl() {
+    return getSavedCeydUrl() || (window.PI_HOSTED ? window.location.origin : '');
 }
 
 function ceydTranslit() {
@@ -663,7 +671,7 @@ function ceydTranslit() {
 
 function ceydStatusText() {
     if (!getCeydUrl()) return 'Not set up. EYD stays hidden.';
-    if (ceydAvailable) return 'Connected.';
+    if (ceydAvailable) return window.PI_HOSTED && !getSavedCeydUrl() ? 'Connected. This page is served by your Pi.' : 'Connected.';
     return `Can't reach the relay (${ceydReason || 'is Tailscale on?'}). EYD stays hidden until it can.`;
 }
 
@@ -671,6 +679,7 @@ function ceydStatusText() {
 async function checkCeyd() {
     const base = getCeydUrl();
     let ok = false;
+    let canFetch = false;
     ceydReason = '';
     if (base) {
         const ctrl = new AbortController();
@@ -682,6 +691,7 @@ async function checkCeyd() {
             } else {
                 const j = await r.json();
                 ok = j.ok === true && (j.service === 'dictionary-relay' || j.service === 'ceyd-relay');
+                canFetch = ok && Array.isArray(j.features) && j.features.includes('fetch');
                 if (!ok) ceydReason = 'unexpected reply from that address';
             }
         } catch (e) {
@@ -693,6 +703,7 @@ async function checkCeyd() {
     }
     const changed = ok !== ceydAvailable;
     ceydAvailable = ok;
+    relayCanFetch = canFetch;
     if (changed) {
         refreshDictUI();
         const query = document.getElementById('search-input').value.trim();
@@ -819,7 +830,9 @@ function renderCeyd(d, container, countEl) {
 
 // Settings for EYD
 function syncCeydSettings() {
-    document.getElementById('ceyd-url-input').value = getCeydUrl();
+    const urlInput = document.getElementById('ceyd-url-input');
+    urlInput.value = getSavedCeydUrl();
+    if (window.PI_HOSTED) urlInput.placeholder = 'Leave blank: this page is served by your Pi';
     document.getElementById('ceyd-translit').checked = ceydTranslit();
     document.getElementById('ceyd-status').textContent = ceydStatusText();
 }
@@ -846,6 +859,7 @@ function clearCeydUrl() {
     ceydAvailable = false;
     refreshDictUI();
     document.getElementById('ceyd-status').textContent = ceydStatusText();
+    if (window.PI_HOSTED) checkCeyd();   // this server is still the relay
 }
 
 function setCeydTranslit(on) {
@@ -1006,6 +1020,15 @@ async function fetchWithCorsFallback(url) {
             fetch: () => fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {}, 9000)
         },
     ];
+
+    // The Pi relay (when it's reachable and offers /api/fetch) goes right after the direct
+    // attempt, ahead of the public proxies: same job, but it's yours and doesn't come and go.
+    if (ceydAvailable && relayCanFetch) {
+        attempts.splice(1, 0, {
+            name: 'Pi relay',
+            fetch: () => fetchWithTimeout(`${getCeydUrl()}/api/fetch?url=${encodeURIComponent(url)}`, {}, 12000)
+        });
+    }
 
     const errors = [];
     for (const attempt of attempts) {
