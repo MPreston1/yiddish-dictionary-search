@@ -536,8 +536,11 @@ function doSearch() {
 
 // Shared word-boundary definition: used by both the whole-word filters and
 // the whole-word highlighter, so they can't disagree about what a "word" is.
-const WB_PRE = '(?<![\\w\u0590-\u05ff\ufb1d-\ufb4f])';
-const WB_POST = '(?![\\w\u0590-\u05ff\ufb1d-\ufb4f])';
+// Uses Unicode property escapes (letters, combining marks, digits) rather than
+// \w, which only covers ASCII and would treat accented Latin letters and IPA
+// characters (e.g. í, ə) as word boundaries.
+const WB_PRE = '(?<![\\p{L}\\p{M}\\p{N}_\u0590-\u05ff\ufb1d-\ufb4f])';
+const WB_POST = '(?![\\p{L}\\p{M}\\p{N}_\u0590-\u05ff\ufb1d-\ufb4f])';
 
 function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
