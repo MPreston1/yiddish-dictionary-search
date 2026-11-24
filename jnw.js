@@ -5,8 +5,8 @@
 // downloaded in Settings.
 // Uses from app.js: normalizeYiddish, highlightTokens, WB_PRE/WB_POST, escapeRegex,
 // escapeHTML, openDB/IDB_*.
-// Also uses from ceyd.js, only when the relay is up: ceydAvailable, relayCanFetch,
-// getCeydUrl (the Pi relay is one of the routes fetchWithCorsFallback tries).
+// Also uses from relay.js: relayFetchUrl() (the Pi relay is one of the routes
+// fetchWithCorsFallback tries, when it is up).
 
 // ── JNW local backup storage (separate keys, same IndexedDB store) ─────────
 async function saveJNWBackupToDB(meta, entries) {
@@ -116,10 +116,11 @@ async function fetchWithCorsFallback(url) {
 
     // The Pi relay (when it's reachable and offers /api/fetch) goes right after the direct
     // attempt, ahead of the public proxies: same job, but it's yours and doesn't come and go.
-    if (ceydAvailable && relayCanFetch) {
+    const viaRelay = relayFetchUrl(url);
+    if (viaRelay) {
         attempts.splice(1, 0, {
             name: 'Pi relay',
-            fetch: () => fetchWithTimeout(`${getCeydUrl()}/api/fetch?url=${encodeURIComponent(url)}`,
+            fetch: () => fetchWithTimeout(viaRelay,
                 {headers: {'X-Target-Accept': 'application/json'}}, 12000)
         });
     }

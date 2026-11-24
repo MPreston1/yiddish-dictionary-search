@@ -187,22 +187,27 @@
         </section>
 
         <section class="settings-section">
-            <h3>Settings for EYD</h3>
-            <p>The English–Yiddish dictionary is reached through your own private relay. Enter its address on each
-                device; it is stored only in this browser. Until the relay can be reached, EYD stays hidden.</p>
-            <input id="ceyd-url-input" type="url" placeholder="https://your-relay-address" autocapitalize="none"
+            <h3>Settings for the relay</h3>
+            <p>Your own private relay (on the Pi) lets this app reach the English–Yiddish dictionary, and gives JNW an
+                extra route. Enter its address on each device; it is stored only in this browser. Until the relay can
+                be reached, EYD stays hidden.</p>
+            <input id="relay-url-input" type="url" placeholder="https://your-relay-address" autocapitalize="none"
                    autocorrect="off" spellcheck="false"
                    style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 10px;font-size:14px;margin-bottom:8px;"
-                   onkeydown="if(event.key==='Enter')saveCeydUrl()">
-            <div class="modal-progress" id="ceyd-status" style="margin-bottom:6px;"></div>
+                   onkeydown="if(event.key==='Enter')saveRelayUrl()">
+            <div class="modal-progress" id="relay-status" style="margin-bottom:6px;"></div>
+            <div class="modal-btns">
+                <button class="btn btn-red" onclick="clearRelayUrl()">Remove</button>
+                <button class="btn btn-blue" onclick="saveRelayUrl()">Save &amp; Test</button>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h3>Settings for EYD</h3>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;">
                 <input type="checkbox" id="ceyd-translit" onchange="setCeydTranslit(this.checked)">
                 Show transliteration under the Yiddish
             </label>
-            <div class="modal-btns">
-                <button class="btn btn-red" onclick="clearCeydUrl()">Remove</button>
-                <button class="btn btn-blue" onclick="saveCeydUrl()">Save &amp; Test</button>
-            </div>
         </section>
     </div>
 </div>
@@ -213,6 +218,7 @@
 <script src="app.js"></script>
 <script src="ycd.js"></script>
 <script src="jnw.js"></script>
+<script src="relay.js"></script>
 <script src="ceyd.js"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>

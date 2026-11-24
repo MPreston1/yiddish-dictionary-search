@@ -1,7 +1,7 @@
 'use strict';
 
 // Core of the Yiddish Dictionary Search app. Load order (see index.html):
-//   app.js (this file) -> ycd.js -> jnw.js -> ceyd.js
+//   app.js (this file) -> ycd.js -> jnw.js -> relay.js -> ceyd.js
 // This file holds what the dictionaries share (text normalization, highlighting,
 // the dictionary toggles/tabs, the search entry point, Settings shell, find bar,
 // Yiddish keyboard). Each dictionary lives in its own file and plugs in through
@@ -167,7 +167,7 @@ function escapeRegex(s) {
 // ── Dictionaries: which are pressed, which are available ──────────────────────
 // Which dictionaries exist is decided by the files that are loaded: each one
 // calls registerDict() (see the bottom of ycd.js, jnw.js, ceyd.js). A dictionary
-// may say it is not available right now (EYD, while its relay doesn't answer).
+// may say it is not available right now (EYD, while the relay doesn't answer).
 const DICTS = [];                // ids, in display order (filled by registerDict)
 const dictModules = {};          // id -> {search, available?, local?, init?, onSettingsOpen?, onSettingsClose?}
 let dictOn = {};                 // what the user has pressed
@@ -182,6 +182,9 @@ function registerDict(id, mod) {
     DICTS.push(id);
     dictModules[id] = mod;
     dictOn[id] = true;
+    if (mod.onSettingsOpen || mod.onSettingsClose) {
+        registerSettingsHooks({open: mod.onSettingsOpen, close: mod.onSettingsClose});
+    }
 }
 
 function dictAvailable(d) {
@@ -388,14 +391,22 @@ window.addEventListener('offline', updateDictLinks);
 updateDictLinks();
 
 // ── Settings dialog ───────────────────────────────────────────────────────────
-// The dictionaries' own sections are filled in / shut down through their hooks.
+// Each part with its own Settings section (the dictionaries, the relay) fills it in
+// and shuts it down through hooks: registerSettingsHooks({open, close}), both optional.
+// registerDict() does this for a dictionary's onSettingsOpen / onSettingsClose.
+const settingsHooks = [];
+
+function registerSettingsHooks(hooks) {
+    settingsHooks.push(hooks);
+}
+
 function openSettings() {
     document.getElementById('settings-overlay').classList.add('open');
-    for (const d of DICTS) if (dictModules[d].onSettingsOpen) dictModules[d].onSettingsOpen();
+    for (const h of settingsHooks) if (h.open) h.open();
 }
 
 function closeSettings() {
-    for (const d of DICTS) if (dictModules[d].onSettingsClose) dictModules[d].onSettingsClose();
+    for (const h of settingsHooks) if (h.close) h.close();
     document.getElementById('settings-overlay').classList.remove('open');
 }
 

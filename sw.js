@@ -7,7 +7,7 @@
 // been loaded once; no version numbers to bump.
 // Requests to other sites (dictionary sources, CORS proxies) are never touched.
 const CACHE = 'yiddish-dictionary';
-const SHELL = ['./', 'style.css', 'app.js', 'ycd.js', 'jnw.js', 'ceyd.js'];
+const SHELL = ['./', 'style.css', 'app.js', 'ycd.js', 'jnw.js', 'relay.js', 'ceyd.js'];
 
 let refreshing = null;
 function refreshShell() {
