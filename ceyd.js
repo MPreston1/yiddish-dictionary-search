@@ -71,7 +71,7 @@ function renderCeyd(d, container, countEl) {
         countEl.textContent = '';
         return;
     }
-    countEl.textContent = `${real.length.toLocaleString()} match${real.length !== 1 ? 'es' : ''} for "${d.query}"`;
+    countEl.textContent = `${real.length == 0 ? '1' : real.length.toLocaleString()} match${real.length !== 1 ? 'es' : ''} for "${d.query}"`;
     if (d.choices.length) {
         const wrap = document.createElement('div');
         wrap.className = 'ceyd-choices';
