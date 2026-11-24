@@ -1,13 +1,13 @@
-// Offline support. The app "shell" (index.html + style.css + app.js) is cached
+// Offline support. The app "shell" (index.html + style.css + the JS files) is cached
 // as one set and always served from that set, so the HTML, CSS and JS can never
-// come from different releases. Each time the app is opened, the service worker
+// come from different releases. Every file the page loads must be listed in SHELL. Each time the app is opened, the service worker
 // re-downloads all three files in the background (bypassing the browser's HTTP
 // cache) and swaps in the new set only if every file arrived. A change you
 // deploy therefore shows up the next time the app is opened after it has
 // been loaded once; no version numbers to bump.
 // Requests to other sites (dictionary sources, CORS proxies) are never touched.
 const CACHE = 'yiddish-dictionary';
-const SHELL = ['./', 'style.css', 'app.js'];
+const SHELL = ['./', 'style.css', 'app.js', 'ycd.js', 'jnw.js', 'ceyd.js'];
 
 let refreshing = null;
 function refreshShell() {
