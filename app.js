@@ -410,6 +410,15 @@ function closeSettings() {
     document.getElementById('settings-overlay').classList.remove('open');
 }
 
+// Esc closes the Settings dialog
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' &&
+        document.getElementById('settings-overlay').classList.contains('open')) {
+        e.preventDefault();
+        closeSettings();
+    }
+});
+
 // ── Find in results ───────────────────────────────────────────────────────────
 function toggleFind() {
     const bar = document.getElementById('findbar');
