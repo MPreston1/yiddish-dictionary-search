@@ -8,99 +8,59 @@
 // registerDict(). These are plain scripts, so top-level names are shared between
 // the files, and onclick="..." handlers in index.html can still reach them.
 
-'use strict';
-
 // ── Unicode normalization ───────────────────────────────────────────────────
-// normalizeYiddishWithMap() is the single source of truth for every rule
-// below. It walks the original text once, left to right, and for each
-// "chunk" it consumes (1 original char that expands to 2, or 2 original
-// chars that collapse to 1, or an ordinary passthrough char) it records
-// both the normalized-text range and the original-text range that chunk
-// came from. This lets callers that only need the normalized string ignore
-// the map (see normalizeYiddish() below), while callers that need to
-// highlight matches in the *original* text (see highlightTokens()) can
-// convert a match found in normalized coordinates back to original
-// coordinates.
+// normalizeYiddishWithMap() is the single source of truth for the normalization
+// rules. It walks the original text once, left to right, and for each "chunk" it
+// consumes (1 original char that expands to 2, 2 original chars that collapse to 1,
+// or an ordinary passthrough char) it records both the normalized-text range and the
+// original-text range that chunk came from. Callers that only need the normalized
+// string use normalizeYiddish() below; callers that need to highlight matches in the
+// *original* text (see highlightTokens()) use the map to convert a match found in
+// normalized coordinates back to original coordinates.
 //
-// Rule behavior is identical to the previous chained-.replace() version,
-// with one correction: U+FB1F is now fully decomposed all the way down to
-// its primitive letters, matching what U+05F2 already produces on its own.
-//   U+05F2 (Yod-Yod ligature, "double yod")            -> U+05D9 + U+05D9
-//   U+FB1F (Yod-Yod-Patah ligature)                    -> U+05D9 + U+05D9 + U+05B7
-//   U+05F0 (Vov-Vov ligature, "double vov")             -> U+05D5 + U+05D5
-//   U+05F1 (Vov-Yod ligature)                           -> U+05D5 + U+05D9
-//   U+05D1 + U+05BF (Vet, "bet" + rafe)                 -> U+05D1
-//   U+05E4 + U+05BF (Fey, "pey" + rafe)                 -> U+05E4
-//   U+05D5 + U+05BC (Vov + dagesh, "vov melupm")        -> U+05D5
-//   U+05EA + U+05BC (Tav + dagesh)                       -> U+05EA
-//   U+05DB + U+05BC (Kof, "khof" + dagesh)               -> U+05DB
-//   U+05D9 + U+05B4 (Yod + hiriq, "yud khirik")          -> U+05D9
-//   U+FB1D (Yod-with-hiriq precomposed ligature)          -> U+05D9
-// FB1F is fully expanded (rather than left as U+05F2 + U+05B7) because text
-// sourced from different places encodes "pasekh tsvey yudn" inconsistently:
-// some as the single precomposed U+FB1F character, some as a separate
-// U+05F2 ligature followed by a combining patah, and some as fully spelled-
-// out keyboard input (two plain yuds + patah). Since the loop only checks
-// each rule against characters in the *original* text (it never re-scans
-// its own output), leaving FB1F at the intermediate U+05F2 + U+05B7 stage
-// meant it could never reach the same fully-decomposed form the other two
-// encodings produce -- so a word stored with a precomposed FB1F would never
-// match the same word typed on a keyboard. Fully decomposing all three
-// representations down to the same primitive letters fixes that. Pey +
-// dagesh (U+05BC, "פּ") is intentionally left untouched, because YCD
-// included the dagesh. Kof + dagesh (U+05BC, "כּ"), by contrast, is
-// folded down to plain kof (כ) because YCD does not include the dagesh.
-// Yod + hiriq (U+05B4, "יִ") is likewise folded down to plain yod (י), so
-// that a search containing the pointed form also catches entries spelled
-// with a bare yod (and vice versa, since the query and the entry text are
-// both normalized). As with FB1F above, this letter can be encoded two
-// ways depending on the source: as the single precomposed character U+FB1D,
-// or as a plain yod followed by a separate combining hiriq (what a keyboard
-// typically produces). Both are handled so they reduce to the same plain yod.
+// Why FB1F is fully decomposed: the same word ("pasekh tsvey yudn") is encoded three
+// ways depending on the source: the precomposed U+FB1F, a U+05F2 ligature followed by
+// a combining patah, or two plain yuds + patah typed on a keyboard. The loop only
+// checks the *original* text (it never re-scans its own output), so FB1F has to go
+// straight to the primitive letters for all three to reduce to the same string.
+//
+// Pey + dagesh is intentionally left alone, because YCD includes that dagesh. Kof +
+// dagesh is folded to plain kof because YCD does not. Yod + hiriq is folded to plain
+// yod so a pointed search also finds entries spelled with a bare yod (the query and
+// the entry text are both normalized). Like FB1F, that letter can be encoded as the
+// precomposed U+FB1D or as a yod + a separate hiriq; both reduce to the same plain yod.
+
+// A single character that expands (or collapses) to something else.
+const NORM_EXPAND = {
+    '\u05F2': '\u05D9\u05D9',          // double yod             -> yod yod
+    '\uFB1F': '\u05D9\u05D9\u05B7',    // yod-yod-patah          -> yod yod patah
+    '\u05F0': '\u05D5\u05D5',          // double vov             -> vov vov
+    '\u05F1': '\u05D5\u05D9',          // vov-yod                -> vov yod
+    '\uFB1D': '\u05D9',                // yod-with-hiriq         -> yod
+};
+
+// Base letter -> the combining mark that is dropped when it directly follows it.
+const NORM_DROP_MARK = {
+    '\u05D1': '\u05BF',                // vet: bet + rafe
+    '\u05E4': '\u05BF',                // fey: pey + rafe
+    '\u05D5': '\u05BC',                // vov + dagesh ("vov melupm")
+    '\u05EA': '\u05BC',                // tav + dagesh
+    '\u05DB': '\u05BC',                // kof + dagesh
+    '\u05D9': '\u05B4',                // yod + hiriq
+};
+
 function normalizeYiddishWithMap(text) {
     let normalized = '';
     const chunks = []; // { normStart, normEnd, origStart, origEnd }
     let i = 0;
     while (i < text.length) {
         const c = text[i];
-        const c2 = i + 1 < text.length ? text[i + 1] : '';
-        let out, consumed;
-        if (c === '\u05F2') {
-            out = '\u05D9\u05D9';
-            consumed = 1;
-        } else if (c === '\uFB1F') {
-            out = '\u05D9\u05D9\u05B7';
-            consumed = 1;
-        } else if (c === '\u05F0') {
-            out = '\u05D5\u05D5';
-            consumed = 1;
-        } else if (c === '\u05F1') {
-            out = '\u05D5\u05D9';
-            consumed = 1;
-        } else if (c === '\u05D1' && c2 === '\u05BF') {
-            out = '\u05D1';
-            consumed = 2;
-        } else if (c === '\u05E4' && c2 === '\u05BF') {
-            out = '\u05E4';
-            consumed = 2;
-        } else if (c === '\u05D5' && c2 === '\u05BC') {
-            out = '\u05D5';
-            consumed = 2;
-        } else if (c === '\u05EA' && c2 === '\u05BC') {
-            out = '\u05EA';
-            consumed = 2;
-        } else if (c === '\uFB1D') {
-            out = '\u05D9';
-            consumed = 1;
-        } else if (c === '\u05D9' && c2 === '\u05B4') {
-            out = '\u05D9';
-            consumed = 2;
-        } else if (c === '\u05DB' && c2 === '\u05BC') {
-            out = '\u05DB';
-            consumed = 2;
-        } else {
+        let out = NORM_EXPAND[c];
+        let consumed = 1;
+        if (out === undefined) {
             out = c;
-            consumed = 1;
+            const mark = NORM_DROP_MARK[c];
+            if (mark && text[i + 1] === mark) consumed = 2;   // (the `mark &&` guard matters at end-of-string)
         }
 
         const normStart = normalized.length;
@@ -131,8 +91,10 @@ function findChunkForNormIndex(chunks, idx) {
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
-let findMatches = [];    // DOM text nodes + offsets for find-in-page
+let findMatches = [];    // the <span class="find-hl"> elements for find-in-page (ycd.js resets this too: keep the name)
 let findIndex = -1;
+const FIND_HL_COLOR = '#FFE082';
+const FIND_HL_CURRENT = '#FF9800';
 
 // ── Persistence via IndexedDB ─────────────────────────────────────────────────
 // IndexedDB is far more persistent than localStorage on iOS PWAs --
@@ -164,6 +126,17 @@ function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Every non-overlapping occurrence of `needle` in `haystack`, as [start, end] pairs.
+// An empty needle matches nothing (it would otherwise never advance).
+function indexOfAll(haystack, needle) {
+    const found = [];
+    if (!needle) return found;
+    for (let i = haystack.indexOf(needle); i !== -1; i = haystack.indexOf(needle, i + needle.length)) {
+        found.push([i, i + needle.length]);
+    }
+    return found;
+}
+
 // ── Dictionaries: which are pressed, which are available ──────────────────────
 // Which dictionaries exist is decided by the files that are loaded: each one
 // calls registerDict() (see the bottom of ycd.js, jnw.js, ceyd.js). A dictionary
@@ -192,12 +165,15 @@ function dictAvailable(d) {
     return !m.available || m.available();
 }
 
-let activeResultTab = 'ycd';
+// What is shown when nothing else is available: the local dictionary, which never
+// depends on the network or the relay.
+const FALLBACK_DICT = 'ycd';
+let activeResultTab = FALLBACK_DICT;
 let scopeSearchTimer = null;
 
 function enabledDicts() {
     const on = DICTS.filter(d => dictOn[d] && dictAvailable(d));
-    return on.length ? on : ['ycd'];
+    return on.length ? on : [FALLBACK_DICT];
 }
 
 function loadDictState() {
@@ -216,7 +192,7 @@ function loadDictState() {
 
 // Update columns, buttons and tabs to match the current state (no search).
 function refreshDictUI() {
-    if (!DICTS.some(d => dictOn[d] && dictAvailable(d))) dictOn.ycd = true;
+    if (!DICTS.some(d => dictOn[d] && dictAvailable(d))) dictOn[FALLBACK_DICT] = true;
     const enabled = enabledDicts();
     for (const d of DICTS) {
         document.getElementById('col-' + d).classList.toggle('hidden-col', !enabled.includes(d));
@@ -258,14 +234,15 @@ function showResultTab(which) {
 function syncScopeUI() {
     const enabled = enabledDicts();
     if (!enabled.includes(activeResultTab)) activeResultTab = enabled[0];
-    for (const d of DICTS) document.getElementById('toggle-' + d).hidden = !dictAvailable(d);
     document.getElementById('results-columns').classList.toggle('tabs-on', enabled.length >= 2);
     for (const d of DICTS) {
         const on = enabled.includes(d);
-        document.getElementById('toggle-' + d).setAttribute('aria-pressed', String(on));
+        const isActive = activeResultTab === d;
+        const toggle = document.getElementById('toggle-' + d);
+        toggle.hidden = !dictAvailable(d);
+        toggle.setAttribute('aria-pressed', String(on));
         const tab = document.getElementById('tab-' + d);
         tab.hidden = !on;
-        const isActive = activeResultTab === d;
         tab.classList.toggle('active', isActive);
         tab.setAttribute('aria-selected', String(isActive));
         document.getElementById('col-' + d).classList.toggle('active-tab', isActive);
@@ -297,11 +274,11 @@ function doSearch() {
         displayAll: document.getElementById('jnw-display-all').checked,   // JNW only
     };
     const enabled = enabledDicts();
-    const order = [...enabled].sort((a, b) => !!dictModules[a].local - !!dictModules[b].local);
+    const order = enabled.sort((a, b) => !!dictModules[a].local - !!dictModules[b].local);
     for (const d of order) dictModules[d].search(query, opts);
 
     // The YCD search resets the find bar itself; if YCD is off, do it here.
-    if (!enabled.includes('ycd')) closeFind(true);
+    if (!enabled.includes('ycd')) closeFind();
 }
 
 // ── Highlighting (used by YCD and JNW) ───────────────────────────────────────
@@ -327,13 +304,7 @@ function highlightTokens(text, tokens, wholeWord = false) {
                 if (m[0].length === 0) re.lastIndex++;
             }
         } else {
-            let pos = 0;
-            while (true) {
-                const idx = lower.indexOf(token, pos);
-                if (idx === -1) break;
-                ranges.push([idx, idx + token.length]);
-                pos = idx + token.length;
-            }
+            for (const r of indexOfAll(lower, token)) ranges.push(r);
         }
     }
     if (!ranges.length) return escapeHTML(text);
@@ -385,7 +356,6 @@ function updateDictLinks() {
     });
 }
 
-
 window.addEventListener('online', updateDictLinks);
 window.addEventListener('offline', updateDictLinks);
 updateDictLinks();
@@ -430,20 +400,23 @@ function toggleFind() {
     }
 }
 
-function closeFind(silent) {
-    document.getElementById('findbar').classList.remove('open');
-    document.getElementById('find-input').value = '';
-    document.getElementById('find-count').textContent = '';
+// Drops the highlights and the match list and blanks the counter. (The bar's own
+// open/closed state and the typed query are left to the caller.)
+function clearFindState() {
     clearFindHighlights();
     findMatches = [];
     findIndex = -1;
+    document.getElementById('find-count').textContent = '';
+}
+
+function closeFind() {
+    document.getElementById('findbar').classList.remove('open');
+    document.getElementById('find-input').value = '';
+    clearFindState();
 }
 
 function findReset() {
-    clearFindHighlights();
-    findMatches = [];
-    findIndex = -1;
-    document.getElementById('find-count').textContent = '';
+    clearFindState();
     const q = document.getElementById('find-input').value.trim();
     if (!q) return;
     buildFindMatches(q);
@@ -454,24 +427,24 @@ function findReset() {
     updateFindCount();
 }
 
-function findNext() {
+// Moves to the next (+1) or previous (-1) match, wrapping around. With no matches
+// yet (e.g. the query was just typed) it runs the search instead.
+function stepFind(delta) {
     if (!findMatches.length) {
         findReset();
         return;
     }
-    findIndex = (findIndex + 1) % findMatches.length;
+    findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
     scrollToFind();
     updateFindCount();
 }
 
+function findNext() {
+    stepFind(1);
+}
+
 function findPrev() {
-    if (!findMatches.length) {
-        findReset();
-        return;
-    }
-    findIndex = (findIndex - 1 + findMatches.length) % findMatches.length;
-    scrollToFind();
-    updateFindCount();
+    stepFind(-1);
 }
 
 function updateFindCount() {
@@ -496,15 +469,8 @@ function buildFindMatches(query) {
     const hits = [];
     let node;
     while ((node = walker.nextNode())) {
-        const text = node.textContent;
-        const lower = text.toLowerCase();
-        let pos = 0;
-        while (true) {
-            const idx = lower.indexOf(q, pos);
-            if (idx === -1) break;
-            hits.push({node, start: idx, end: idx + q.length});
-            pos = idx + q.length;
-        }
+        const lower = node.textContent.toLowerCase();
+        for (const [start, end] of indexOfAll(lower, q)) hits.push({node, start, end});
     }
 
     // Wrap hits in spans (process in reverse to preserve offsets)
@@ -516,12 +482,12 @@ function buildFindMatches(query) {
         range.setEnd(node, end);
         const span = document.createElement('span');
         span.className = 'find-hl';
-        span.style.background = '#FFE082';
+        span.style.background = FIND_HL_COLOR;
         span.style.borderRadius = '2px';
         range.surroundContents(span);
-        spans.unshift(span);
+        spans.push(span);
     }
-    findMatches = spans;
+    findMatches = spans.reverse();   // collected last-to-first; flip into document order
 }
 
 function clearFindHighlights() {
@@ -533,8 +499,8 @@ function clearFindHighlights() {
 }
 
 function scrollToFind() {
-    document.querySelectorAll('.find-hl').forEach((s, i) => {
-        s.style.background = i === findIndex ? '#FF9800' : '#FFE082';
+    findMatches.forEach((s, i) => {
+        s.style.background = i === findIndex ? FIND_HL_CURRENT : FIND_HL_COLOR;
     });
     if (findMatches[findIndex]) {
         findMatches[findIndex].scrollIntoView({behavior: 'smooth', block: 'center'});
@@ -591,6 +557,8 @@ try {
 } catch (e) {
 }
 let yidLastWasTilde = false;
+// Pressing one of these alone types nothing and doesn't break a "~~" pair.
+const YK_MODIFIER_KEYS = new Set(['Shift', 'Alt', 'Control', 'Meta', 'CapsLock']);
 
 function updateYiddishUI() {
     const btn = document.getElementById('yid-toggle');
@@ -631,18 +599,13 @@ function yiddishKeydown(e) {
     if (e.key === '~') {
         e.preventDefault();
         if (e.repeat) return;
-        if (yidLastWasTilde) {
-            yidLastWasTilde = false;
-            setYiddish(!yiddishOn);
-            insertAtCursor(e.target, '~');
-        } else {
-            yidLastWasTilde = true;
-            setYiddish(!yiddishOn);
-        }
+        setYiddish(!yiddishOn);
+        if (yidLastWasTilde) insertAtCursor(e.target, '~');
+        yidLastWasTilde = !yidLastWasTilde;
         return;
     }
 
-    if (['Shift', 'Alt', 'Control', 'Meta', 'CapsLock'].includes(e.key)) return;
+    if (YK_MODIFIER_KEYS.has(e.key)) return;
     yidLastWasTilde = false;
 
     // Caps Lock types plain Latin, as in the Mac layout.
@@ -650,7 +613,7 @@ function yiddishKeydown(e) {
 
     const m = YK_MAP[e.code];
     if (!m) return;
-    const out = e.altKey ? (e.shiftKey ? m[3] : m[2]) : (e.shiftKey ? m[1] : m[0]);
+    const out = m[(e.altKey ? 2 : 0) + (e.shiftKey ? 1 : 0)];
     if (!out) return;
     e.preventDefault();
     insertAtCursor(e.target, out);
