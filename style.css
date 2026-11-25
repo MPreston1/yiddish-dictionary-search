@@ -45,14 +45,14 @@ html, body {
 }
 
 /* iPhone only (iOS + narrow screen): extra top padding keeps the title below iOS's
-   blurred status-bar edge. Adjust the 28px to taste. 
+   blurred status-bar edge. Adjust the 28px to taste. */
 @media (max-width: 480px) {
     @supports (-webkit-touch-callout: none) {
         #topbar {
             padding-top: 28px;
         }
     }
-}*/
+}
 
 .topbar-head {
     display: flex;
