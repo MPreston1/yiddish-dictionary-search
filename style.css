@@ -41,9 +41,17 @@ html, body {
 #topbar {
     background: var(--card);
     border-bottom: 1px solid var(--border);
-    /* Extra top padding keeps the title below iOS's blurred status-bar edge in the home-screen app.
-       Adjust the 28px to taste. */
-    padding: 28px 12px 8px;
+    padding: 10px 12px 8px;
+}
+
+/* iPhone only (iOS + narrow screen): extra top padding keeps the title below iOS's
+   blurred status-bar edge. Adjust the 28px to taste. */
+@media (max-width: 480px) {
+    @supports (-webkit-touch-callout: none) {
+        #topbar {
+            padding-top: 28px;
+        }
+    }
 }
 
 .topbar-head {
