@@ -11,6 +11,22 @@ let appData = {source_name: null, download_date: '', entries: []};
 let currentMatches = [];   // entries from last search
 
 // ── Persistence via IndexedDB ─────────────────────────────────────────────────
+// Removes the stored YCD data (and only that). The IndexedDB store is shared with the
+// JNW offline backup, so this deletes the two YCD keys rather than clearing the store.
+// Throws if IndexedDB fails; callers decide what to do then.
+async function clearYCDFromDB() {
+    const db = await openDB();
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const st = tx.objectStore(IDB_STORE);
+    st.delete('meta');
+    st.delete('entries');
+    await new Promise((res, rej) => {
+        tx.oncomplete = res;
+        tx.onerror = rej;
+    });
+    db.close();
+}
+
 async function saveData() {
     try {
         const db = await openDB();
@@ -417,14 +433,7 @@ async function finishImport(html, sourceName, downloadDate) {
     currentMatches = [];
     findMatches = [];
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).clear();
-        await new Promise((res, rej) => {
-            tx.oncomplete = res;
-            tx.onerror = rej;
-        });
-        db.close();
+        await clearYCDFromDB();
     } catch (e) {
     }
 
@@ -498,18 +507,12 @@ async function clearDictionary() {
     currentMatches = [];
     findMatches = [];
 
-    // Await the async save so IndexedDB is fully cleared before we return.
-    // We also explicitly clear the IndexedDB store (not just overwrite with
-    // empty arrays) to ensure the storage is fully released.
+    // Await the async delete so IndexedDB is fully cleared before we return.
+    // We explicitly delete the YCD records (not just overwrite them with empty
+    // arrays) to ensure the storage is fully released. The JNW backup, which shares
+    // the same store, is left alone.
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).clear();
-        await new Promise((res, rej) => {
-            tx.oncomplete = res;
-            tx.onerror = rej;
-        });
-        db.close();
+        await clearYCDFromDB();
     } catch (e) {
         // Fallback: write empty data
         await saveData();

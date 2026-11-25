@@ -68,10 +68,13 @@ function renderCeyd(d, container, countEl) {
     const real = d.choices.filter(c => !c.more);
     if (!d.entries.length) {
         container.innerHTML = '<p class="message">No matches found.</p>';
-        countEl.textContent = '';
+        countEl.textContent = `0 matches for "${d.query}"`;   // (the phone tab shows this number)
         return;
     }
-    countEl.textContent = `${real.length == 0 ? '1' : real.length.toLocaleString()} match${real.length !== 1 ? 'es' : ''} for "${d.query}"`;
+    // With several headwords the site sends a list of choices, one per headword. With a
+    // single hit it sends no choices at all, just the entry itself, so count the entries.
+    const n = real.length || d.entries.length;
+    countEl.textContent = `${n.toLocaleString()} match${n !== 1 ? 'es' : ''} for "${d.query}"`;
     if (d.choices.length) {
         const wrap = document.createElement('div');
         wrap.className = 'ceyd-choices';
