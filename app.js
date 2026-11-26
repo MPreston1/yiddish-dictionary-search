@@ -2,11 +2,61 @@
 
 // Core of the Yiddish Dictionary Search app. Load order (see index.html):
 //   app.js (this file) -> ycd.js -> jnw.js -> relay.js -> ceyd.js
-// This file holds what the dictionaries share (text normalization, highlighting,
-// the dictionary toggles/tabs, the search entry point, Settings shell, find bar,
-// Yiddish keyboard). Each dictionary lives in its own file and plugs in through
+// This file holds what the dictionaries share (small helpers, text normalization,
+// highlighting, the dictionary toggles/tabs, the search entry point, Settings shell,
+// find bar, Yiddish keyboard). Each dictionary lives in its own file and plugs in through
 // registerDict(). These are plain scripts, so top-level names are shared between
 // the files, and onclick="..." handlers in index.html can still reach them.
+
+// ── Small shared helpers ─────────────────────────────────────────────────────
+// Used by every file (plain scripts share their top-level names).
+
+// Shorthand for document.getElementById.
+const $ = id => document.getElementById(id);
+
+// localStorage that never throws. It can be unavailable or full (private browsing,
+// storage turned off), and nothing kept in it is worth failing over.
+const store = {
+    get(key) {
+        try {
+            return localStorage.getItem(key);
+        } catch (e) {
+            return null;
+        }
+    },
+    set(key, value) {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+        }
+    },
+    setJSON(key, value) {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+        }
+    },
+    remove(key) {
+        try {
+            localStorage.removeItem(key);
+        } catch (e) {
+        }
+    },
+};
+
+// Messages the dictionaries show in their results area, and a helper to show one.
+// `spinner` puts the "searching" spinner in front of the text.
+const MSG_PROMPT = 'Type a word and tap Search.';
+const MSG_NO_MATCHES = 'No matches found.';
+
+function showMessage(container, text, {spinner = false} = {}) {
+    container.innerHTML = `<p class="message">${spinner ? '<span class="spinner"></span> ' : ''}${escapeHTML(text)}</p>`;
+}
+
+// The count line shown above a dictionary's results: 1,234 matches for "word".
+function matchCountText(n, query) {
+    return `${n.toLocaleString()} match${n !== 1 ? 'es' : ''} for "${query}"`;
+}
 
 // ── Unicode normalization ───────────────────────────────────────────────────
 // normalizeYiddishWithMap() is the single source of truth for the normalization
@@ -178,12 +228,12 @@ function enabledDicts() {
 
 function loadDictState() {
     try {
-        const saved = JSON.parse(localStorage.getItem('dictSet') || 'null');
+        const saved = JSON.parse(store.get('dictSet') || 'null');
         if (saved && typeof saved === 'object') {
             for (const d of DICTS) if (typeof saved[d] === 'boolean') dictOn[d] = saved[d];
             return;
         }
-        const old = localStorage.getItem('dictScope');   // from before there were three dictionaries
+        const old = store.get('dictScope');   // from before there were three dictionaries
         if (old === 'ycd') dictOn.jnw = false;
         if (old === 'jnw') dictOn.ycd = false;
     } catch (e) {
@@ -195,12 +245,9 @@ function refreshDictUI() {
     if (!DICTS.some(d => dictOn[d] && dictAvailable(d))) dictOn[FALLBACK_DICT] = true;
     const enabled = enabledDicts();
     for (const d of DICTS) {
-        document.getElementById('col-' + d).classList.toggle('hidden-col', !enabled.includes(d));
+        $('col-' + d).classList.toggle('hidden-col', !enabled.includes(d));
     }
-    try {
-        localStorage.setItem('dictSet', JSON.stringify(dictOn));
-    } catch (e) {
-    }
+    store.setJSON('dictSet', dictOn);
     syncScopeUI();
 }
 
@@ -227,33 +274,33 @@ function showResultTab(which) {
     activeResultTab = which;
     syncScopeUI();
     // Find only looks at the visible dictionary, so refresh it for the new tab.
-    if (document.getElementById('findbar').classList.contains('open')) findReset();
+    if ($('findbar').classList.contains('open')) findReset();
 }
 
 // Reflect the selection in the buttons, and set up the phone tabs.
 function syncScopeUI() {
     const enabled = enabledDicts();
     if (!enabled.includes(activeResultTab)) activeResultTab = enabled[0];
-    document.getElementById('results-columns').classList.toggle('tabs-on', enabled.length >= 2);
+    $('results-columns').classList.toggle('tabs-on', enabled.length >= 2);
     for (const d of DICTS) {
         const on = enabled.includes(d);
         const isActive = activeResultTab === d;
-        const toggle = document.getElementById('toggle-' + d);
+        const toggle = $('toggle-' + d);
         toggle.hidden = !dictAvailable(d);
         toggle.setAttribute('aria-pressed', String(on));
-        const tab = document.getElementById('tab-' + d);
+        const tab = $('tab-' + d);
         tab.hidden = !on;
         tab.classList.toggle('active', isActive);
         tab.setAttribute('aria-selected', String(isActive));
-        document.getElementById('col-' + d).classList.toggle('active-tab', isActive);
+        $('col-' + d).classList.toggle('active-tab', isActive);
     }
 }
 
 // Mirror each column's result count (just the number) into its phone tab.
 function setupTabCounts() {
     for (const d of DICTS) {
-        const src = document.getElementById('count-' + d);
-        const dst = document.getElementById('tabcount-' + d);
+        const src = $('count-' + d);
+        const dst = $('tabcount-' + d);
         const update = () => {
             const m = /^([\d,]+)(?: of [\d,]+)? (?:fetched )?match/.exec(src.textContent.trim());
             dst.textContent = m ? m[1] : '';
@@ -267,11 +314,11 @@ function setupTabCounts() {
 // Hands the query to every dictionary that is switched on. Remote dictionaries go
 // first so their requests are under way while the (synchronous) local one runs.
 function doSearch() {
-    const query = document.getElementById('search-input').value.trim();
+    const query = $('search-input').value.trim();
     const opts = {
-        wholeWord: document.getElementById('whole-word').checked,
-        exactPhrase: document.getElementById('exact-phrase').checked,
-        displayAll: document.getElementById('jnw-display-all').checked,   // JNW only
+        wholeWord: $('whole-word').checked,
+        exactPhrase: $('exact-phrase').checked,
+        displayAll: $('jnw-display-all').checked,   // JNW only
     };
     const enabled = enabledDicts();
     const order = enabled.sort((a, b) => !!dictModules[a].local - !!dictModules[b].local);
@@ -371,19 +418,19 @@ function registerSettingsHooks(hooks) {
 }
 
 function openSettings() {
-    document.getElementById('settings-overlay').classList.add('open');
+    $('settings-overlay').classList.add('open');
     for (const h of settingsHooks) if (h.open) h.open();
 }
 
 function closeSettings() {
     for (const h of settingsHooks) if (h.close) h.close();
-    document.getElementById('settings-overlay').classList.remove('open');
+    $('settings-overlay').classList.remove('open');
 }
 
 // Esc closes the Settings dialog
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape' &&
-        document.getElementById('settings-overlay').classList.contains('open')) {
+        $('settings-overlay').classList.contains('open')) {
         e.preventDefault();
         closeSettings();
     }
@@ -391,12 +438,12 @@ document.addEventListener('keydown', e => {
 
 // ── Find in results ───────────────────────────────────────────────────────────
 function toggleFind() {
-    const bar = document.getElementById('findbar');
+    const bar = $('findbar');
     if (bar.classList.contains('open')) {
         closeFind();
     } else {
         bar.classList.add('open');
-        document.getElementById('find-input').focus();
+        $('find-input').focus();
     }
 }
 
@@ -406,18 +453,18 @@ function clearFindState() {
     clearFindHighlights();
     findMatches = [];
     findIndex = -1;
-    document.getElementById('find-count').textContent = '';
+    $('find-count').textContent = '';
 }
 
 function closeFind() {
-    document.getElementById('findbar').classList.remove('open');
-    document.getElementById('find-input').value = '';
+    $('findbar').classList.remove('open');
+    $('find-input').value = '';
     clearFindState();
 }
 
 function findReset() {
     clearFindState();
-    const q = document.getElementById('find-input').value.trim();
+    const q = $('find-input').value.trim();
     if (!q) return;
     buildFindMatches(q);
     if (findMatches.length) {
@@ -448,7 +495,7 @@ function findPrev() {
 }
 
 function updateFindCount() {
-    const el = document.getElementById('find-count');
+    const el = $('find-count');
     el.textContent = findMatches.length
         ? `${findIndex + 1} of ${findMatches.length}`
         : 'No matches';
@@ -456,7 +503,7 @@ function updateFindCount() {
 
 // Find works by wrapping text nodes in <span class="find-hl"> elements
 function buildFindMatches(query) {
-    const container = document.getElementById('results-columns');
+    const container = $('results-columns');
     const q = query.toLowerCase();
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
         acceptNode(n) {
@@ -495,7 +542,7 @@ function clearFindHighlights() {
         span.replaceWith(document.createTextNode(span.textContent));
     });
     // Merge adjacent text nodes
-    document.getElementById('results-columns').normalize();
+    $('results-columns').normalize();
 }
 
 function scrollToFind() {
@@ -508,7 +555,7 @@ function scrollToFind() {
 }
 
 // ── Enter key on search ───────────────────────────────────────────────────────
-document.getElementById('search-input').addEventListener('keydown', e => {
+$('search-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') doSearch();
 });
 
@@ -551,30 +598,25 @@ const YK_MAP = {
     Semicolon: [';', ':', '…']
 };
 
-let yiddishOn = false;
-try {
-    yiddishOn = localStorage.getItem('yiddishTyping') === '1';
-} catch (e) {
-}
+// The boxes the Yiddish keyboard works in.
+const YID_INPUT_IDS = ['search-input', 'find-input'];
+
+let yiddishOn = store.get('yiddishTyping') === '1';
 let yidLastWasTilde = false;
 // Pressing one of these alone types nothing and doesn't break a "~~" pair.
 const YK_MODIFIER_KEYS = new Set(['Shift', 'Alt', 'Control', 'Meta', 'CapsLock']);
 
 function updateYiddishUI() {
-    const btn = document.getElementById('yid-toggle');
+    const btn = $('yid-toggle');
     btn.textContent = yiddishOn ? 'א' : 'A';
     btn.classList.toggle('on', yiddishOn);
     btn.setAttribute('aria-pressed', yiddishOn ? 'true' : 'false');
-    ['search-input', 'find-input'].forEach(id =>
-        document.getElementById(id).classList.toggle('yid-on', yiddishOn));
+    YID_INPUT_IDS.forEach(id => $(id).classList.toggle('yid-on', yiddishOn));
 }
 
 function setYiddish(on) {
     yiddishOn = on;
-    try {
-        localStorage.setItem('yiddishTyping', on ? '1' : '0');
-    } catch (e) {
-    }
+    store.set('yiddishTyping', on ? '1' : '0');
     updateYiddishUI();
 }
 
@@ -619,14 +661,13 @@ function yiddishKeydown(e) {
     insertAtCursor(e.target, out);
 }
 
-['search-input', 'find-input'].forEach(id =>
-    document.getElementById(id).addEventListener('keydown', yiddishKeydown));
+YID_INPUT_IDS.forEach(id => $(id).addEventListener('keydown', yiddishKeydown));
 
-const yidBtn = document.getElementById('yid-toggle');
+const yidBtn = $('yid-toggle');
 yidBtn.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the box
 yidBtn.addEventListener('click', () => {
     setYiddish(!yiddishOn);
-    document.getElementById('search-input').focus();
+    $('search-input').focus();
 });
 updateYiddishUI();
 

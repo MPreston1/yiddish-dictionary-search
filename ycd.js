@@ -3,8 +3,9 @@
 // YCD: the Yiddish Cultural Dictionary. The one *local* dictionary: its entries are
 // imported from a saved page (or downloaded from the site), parsed here, stored in
 // IndexedDB, and searched in memory.
-// Uses from app.js: normalizeYiddish*, highlightTokens, WB_PRE/WB_POST, escapeRegex,
-// escapeHTML, openDB/IDB_*, closeFind, closeSettings, findMatches.
+// Uses from app.js: $, store, showMessage/MSG_*, matchCountText, normalizeYiddish*,
+// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, openDB/IDB_*, closeFind,
+// closeSettings, findMatches.
 
 // ── State ────────────────────────────────────────────────────────────────────
 let appData = {source_name: null, download_date: '', entries: []};
@@ -45,10 +46,7 @@ async function saveData() {
         db.close();
     } catch (e) {
         // Fall back to localStorage if IndexedDB fails
-        try {
-            localStorage.setItem('dict_backup', JSON.stringify(appData));
-        } catch (_) {
-        }
+        store.setJSON('dict_backup', appData);
         console.warn('IndexedDB save failed:', e);
     }
 }
@@ -77,13 +75,13 @@ async function loadData() {
         console.warn('IndexedDB load failed:', e);
     }
     // Try localStorage fallback
-    try {
-        const raw = localStorage.getItem('dict_backup');
-        if (raw) {
+    const raw = store.get('dict_backup');
+    if (raw) {
+        try {
             appData = JSON.parse(raw);
             return true;
+        } catch (_) {
         }
-    } catch (_) {
     }
     return false;
 }
@@ -282,16 +280,16 @@ function bidiTermDisplay(text) {
 // ── Search ────────────────────────────────────────────────────────────────────
 function searchYCD(query, {wholeWord = false, exactPhrase = false} = {}) {
     const entries = appData.entries;
-    const results = document.getElementById('results-ycd');
-    const countEl = document.getElementById('count-ycd');
+    const results = $('results-ycd');
+    const countEl = $('count-ycd');
 
     if (!entries.length) {
-        results.innerHTML = '<p class="message">No dictionary loaded.</p>';
+        showMessage(results, 'No dictionary loaded.');
         countEl.textContent = '';
         return;
     }
     if (!query) {
-        results.innerHTML = '<p class="message">Type a word and tap Search.</p>';
+        showMessage(results, MSG_PROMPT);
         countEl.textContent = `${entries.length.toLocaleString()} entries loaded`;
         return;
     }
@@ -325,7 +323,7 @@ function searchYCD(query, {wholeWord = false, exactPhrase = false} = {}) {
 
     currentMatches = entries.filter(e => entryMatches(e.term, e.definition.join(' ')));
     const count = currentMatches.length;
-    countEl.textContent = `${count.toLocaleString()} match${count !== 1 ? 'es' : ''} for "${query}"`;
+    countEl.textContent = matchCountText(count, query);
 
     // For exact-phrase mode, highlight only the full phrase as one unit.
     // For normal mode, highlight each individual token.
@@ -337,9 +335,9 @@ function searchYCD(query, {wholeWord = false, exactPhrase = false} = {}) {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 function renderResults(entries, tokens, wholeWord = false) {
-    const container = document.getElementById('results-ycd');
+    const container = $('results-ycd');
     if (!entries.length) {
-        container.innerHTML = '<p class="message">No matches found.</p>';
+        showMessage(container, MSG_NO_MATCHES);
         return;
     }
 
@@ -391,7 +389,7 @@ function downloadYCDBackup() {
 
 // ── Status bar ────────────────────────────────────────────────────────────────
 function refreshStatus() {
-    const el = document.getElementById('ycd-status');
+    const el = $('ycd-status');
     const n = appData.entries.length;
     const name = appData.source_name || '--';
     const dl = appData.download_date;
@@ -401,12 +399,12 @@ function refreshStatus() {
     } else {
         el.textContent = 'No dictionary loaded.';
     }
-    document.getElementById('ycd-backup-download').disabled = !n;
+    $('ycd-backup-download').disabled = !n;
 }
 
 // ── File import ───────────────────────────────────────────────────────────────
 function importFile() {
-    document.getElementById('file-input').click();
+    $('file-input').click();
 }
 
 function handleFile(input) {
@@ -441,17 +439,17 @@ async function finishImport(html, sourceName, downloadDate) {
     appData = {source_name: sourceName, download_date: downloadDate, entries};
     await saveData();
     refreshStatus();
-    document.getElementById('results-ycd').innerHTML = '<p class="message">Dictionary loaded. Type a word and tap Search.</p>';
-    document.getElementById('count-ycd').textContent = '';
+    showMessage($('results-ycd'), 'Dictionary loaded. ' + MSG_PROMPT);
+    $('count-ycd').textContent = '';
     alert(`Imported ${entries.length.toLocaleString()} entries from ${sourceName}`);
 }
 
 // ── Web import ────────────────────────────────────────────────────────────────
 
 async function startWebImport() {
-    const url = document.getElementById('url-input').value.trim();
+    const url = $('url-input').value.trim();
     if (!url) return;
-    const progress = document.getElementById('modal-progress');
+    const progress = $('modal-progress');
     progress.innerHTML = '<span class="spinner"></span> Downloading…';
 
     try {
@@ -518,15 +516,12 @@ async function clearDictionary() {
         await saveData();
     }
     // Also clear localStorage fallback
-    try {
-        localStorage.removeItem('dict_backup');
-    } catch (_) {
-    }
+    store.remove('dict_backup');
 
     refreshStatus();
-    document.getElementById('results-ycd').innerHTML = '<p class="message">Dictionary cleared.</p>';
-    document.getElementById('count-ycd').textContent = '';
-    document.getElementById('search-input').value = '';
+    showMessage($('results-ycd'), 'Dictionary cleared.');
+    $('count-ycd').textContent = '';
+    $('search-input').value = '';
 }
 
 // ── Plug into the app ─────────────────────────────────────────────────────────
@@ -539,12 +534,11 @@ registerDict('ycd', {
         const loaded = await loadData();
         refreshStatus();
         if (appData.entries.length) {
-            document.getElementById('count-ycd').textContent =
+            $('count-ycd').textContent =
                 `${appData.entries.length.toLocaleString()} entries loaded`;
         }
         if (!loaded) {
-            document.getElementById('results-ycd').innerHTML =
-                '<p class="message">Type a word and tap Search.</p>';
+            showMessage($('results-ycd'), MSG_PROMPT);
         }
     },
 });

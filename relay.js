@@ -7,7 +7,7 @@
 //     of the public CORS proxies (see relayFetchUrl below).
 // This file only keeps track of whether the relay is up and where it is. Anything that
 // should react to that listens for the "relaychange" event on window.
-// Uses from app.js: registerSettingsHooks.
+// Uses from app.js: $, store, registerSettingsHooks.
 
 // ── State ────────────────────────────────────────────────────────────────────
 let relayAvailable = false;                           // is the relay reachable right now?
@@ -18,15 +18,16 @@ function relayChanged() {
     window.dispatchEvent(new Event('relaychange'));
 }
 
+// An address as typed in Settings, tidied: no surrounding spaces, no trailing slashes.
+function normalizeRelayUrl(v) {
+    return v.trim().replace(/\/+$/, '');
+}
+
 // The address typed in Settings. Blank when this page is served by the Pi itself.
 // (The storage key keeps its old name, 'ceydRelayUrl', so addresses already saved on
 // your devices keep working.)
 function getSavedRelayUrl() {
-    try {
-        return (localStorage.getItem('ceydRelayUrl') || '').trim().replace(/\/+$/, '');
-    } catch (e) {
-        return '';
-    }
+    return normalizeRelayUrl(store.get('ceydRelayUrl') || '');
 }
 
 // The relay to use: the saved address or, on a page the relay serves itself
@@ -46,6 +47,12 @@ function relayStatusText() {
     if (!getRelayUrl()) return 'Not set up. EYD stays hidden.';
     if (relayAvailable) return window.PI_HOSTED && !getSavedRelayUrl() ? 'Connected. This page is served by your Pi.' : 'Connected.';
     return `Can't reach the relay (${relayReason || 'is Tailscale on?'}). EYD stays hidden until it can.`;
+}
+
+// Shows `text` (by default, the current status) in Settings.
+function updateRelayStatus(text = relayStatusText()) {
+    const st = $('relay-status');
+    if (st) st.textContent = text;
 }
 
 // Ask the relay whether it is there. Fails quietly (and EYD stays hidden) when it isn't.
@@ -78,8 +85,7 @@ async function checkRelay() {
     relayAvailable = ok;
     relayCanFetch = canFetch;
     if (changed) relayChanged();
-    const st = document.getElementById('relay-status');
-    if (st) st.textContent = relayStatusText();
+    updateRelayStatus();
     return ok;
 }
 
@@ -97,34 +103,28 @@ document.addEventListener('visibilitychange', () => {
 
 // ── Settings for the relay ────────────────────────────────────────────────────
 function syncRelaySettings() {
-    const urlInput = document.getElementById('relay-url-input');
+    const urlInput = $('relay-url-input');
     urlInput.value = getSavedRelayUrl();
     if (window.PI_HOSTED) urlInput.placeholder = 'Leave blank: this page is served by your Pi';
-    document.getElementById('relay-status').textContent = relayStatusText();
+    updateRelayStatus();
 }
 
 async function saveRelayUrl() {
-    const input = document.getElementById('relay-url-input');
-    let v = input.value.trim().replace(/\/+$/, '');
+    const input = $('relay-url-input');
+    let v = normalizeRelayUrl(input.value);
     if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
-    try {
-        localStorage.setItem('ceydRelayUrl', v);
-    } catch (e) {
-    }
+    store.set('ceydRelayUrl', v);
     input.value = v;
-    document.getElementById('relay-status').textContent = 'Checking…';
+    updateRelayStatus('Checking…');
     await checkRelay();
 }
 
 function clearRelayUrl() {
-    try {
-        localStorage.removeItem('ceydRelayUrl');
-    } catch (e) {
-    }
-    document.getElementById('relay-url-input').value = '';
+    store.remove('ceydRelayUrl');
+    $('relay-url-input').value = '';
     relayAvailable = false;
     relayChanged();
-    document.getElementById('relay-status').textContent = relayStatusText();
+    updateRelayStatus();
     if (window.PI_HOSTED) checkRelay();   // this server is still the relay
 }
 

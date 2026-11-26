@@ -3,7 +3,7 @@
 // EYD: the Comprehensive English-Yiddish Dictionary (englishyiddishdictionary.com),
 // reached through your own private relay (see relay.js). EYD stays hidden until the
 // relay answers.
-// Uses from app.js: refreshDictUI, enabledDicts.
+// Uses from app.js: $, store, showMessage/MSG_*, matchCountText, refreshDictUI, enabledDicts.
 // Uses from relay.js: relayAvailable, getRelayUrl.
 
 // ── EYD (English-Yiddish dictionary) via the private relay ────────────────────
@@ -11,38 +11,34 @@
 window.addEventListener('relaychange', () => {
     refreshDictUI();
     if (relayAvailable) {
-        const query = document.getElementById('search-input').value.trim();
+        const query = $('search-input').value.trim();
         if (query && enabledDicts().includes('ceyd')) searchCeyd(query);
         else showCeydStatus();
     }
 });
 
 function ceydTranslit() {
-    try {
-        return localStorage.getItem('ceydTranslit') === '1';
-    } catch (e) {
-        return false;
-    }
+    return store.get('ceydTranslit') === '1';
 }
 
 // Like JNW's status line: shown before a search and while one is running, then
 // replaced by the match count.
 function showCeydStatus() {
-    document.getElementById('count-ceyd').textContent = 'searching remote database';
+    $('count-ceyd').textContent = 'searching remote database';
 }
 
 let ceydToken = 0;
 
 async function searchCeyd(query, opts = {}) {
-    const container = document.getElementById('results-ceyd');
-    const countEl = document.getElementById('count-ceyd');
+    const container = $('results-ceyd');
+    const countEl = $('count-ceyd');
     const token = ++ceydToken;
     showCeydStatus();
     if (!query) {
-        container.innerHTML = '<p class="message">Type a word and tap Search.</p>';
+        showMessage(container, MSG_PROMPT);
         return;
     }
-    container.innerHTML = '<p class="message"><span class="spinner"></span> Searching EYD…</p>';
+    showMessage(container, 'Searching EYD…', {spinner: true});
     const p = new URLSearchParams({q: query, lang: opts.lang || 'auto', translit: ceydTranslit() ? '1' : '0'});
     if (opts.id) p.set('id', opts.id);
     if (opts.extend) p.set('extend', '1');
@@ -67,14 +63,14 @@ function renderCeyd(d, container, countEl) {
     container.textContent = '';
     const real = d.choices.filter(c => !c.more);
     if (!d.entries.length) {
-        container.innerHTML = '<p class="message">No matches found.</p>';
-        countEl.textContent = `0 matches for "${d.query}"`;   // (the phone tab shows this number)
+        showMessage(container, MSG_NO_MATCHES);
+        countEl.textContent = matchCountText(0, d.query);   // (the phone tab shows this number)
         return;
     }
     // With several headwords the site sends a list of choices, one per headword. With a
     // single hit it sends no choices at all, just the entry itself, so count the entries.
     const n = real.length || d.entries.length;
-    countEl.textContent = `${n.toLocaleString()} match${n !== 1 ? 'es' : ''} for "${d.query}"`;
+    countEl.textContent = matchCountText(n, d.query);
     if (d.choices.length) {
         const wrap = document.createElement('div');
         wrap.className = 'ceyd-choices';
@@ -131,17 +127,14 @@ function renderCeyd(d, container, countEl) {
 }
 
 function setCeydTranslit(on) {
-    try {
-        localStorage.setItem('ceydTranslit', on ? '1' : '0');
-    } catch (e) {
-    }
-    const query = document.getElementById('search-input').value.trim();
+    store.set('ceydTranslit', on ? '1' : '0');
+    const query = $('search-input').value.trim();
     if (query && enabledDicts().includes('ceyd')) searchCeyd(query);
 }
 
 // Settings for EYD (the relay's own address and status are in relay.js)
 function syncCeydSettings() {
-    document.getElementById('ceyd-translit').checked = ceydTranslit();
+    $('ceyd-translit').checked = ceydTranslit();
 }
 
 // ── Plug into the app ─────────────────────────────────────────────────────────

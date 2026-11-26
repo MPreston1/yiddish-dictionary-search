@@ -3,8 +3,8 @@
 // JNW: jiddischwoordenboek.nl. Searched live through its JSON API (with CORS
 // fallbacks), or from a local offline backup that can be crawled, imported and
 // downloaded in Settings.
-// Uses from app.js: normalizeYiddish, highlightTokens, WB_PRE/WB_POST, escapeRegex,
-// escapeHTML, openDB/IDB_*.
+// Uses from app.js: $, store, showMessage/MSG_*, matchCountText, normalizeYiddish,
+// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, openDB/IDB_*.
 // Also uses from relay.js: relayFetchUrl() (the Pi relay is one of the routes
 // fetchWithCorsFallback tries, when it is up).
 
@@ -233,28 +233,28 @@ function jnwSourceStatus() {
 }
 
 function showJNWStatus() {
-    document.getElementById('count-jnw').textContent = jnwSourceStatus();
+    $('count-jnw').textContent = jnwSourceStatus();
     jnwCountShowsStatus = true;
 }
 
 function clearJNWCount() {
-    document.getElementById('count-jnw').textContent = '';
+    $('count-jnw').textContent = '';
     jnwCountShowsStatus = false;
 }
 
 async function searchJNW(query, opts = {}) {
     const {wholeWord = false, exactPhrase = false, displayAll = false} = opts;
     const token = ++jnwSearchToken; // lets a newer search cancel an older, in-flight one
-    const container = document.getElementById('results-jnw');
-    const countEl = document.getElementById('count-jnw');
+    const container = $('results-jnw');
+    const countEl = $('count-jnw');
 
     if (!query) {
-        container.innerHTML = '<p class="message">Type a word and tap Search.</p>';
+        showMessage(container, MSG_PROMPT);
         showJNWStatus();
         return;
     }
 
-    container.innerHTML = '<p class="message"><span class="spinner"></span> Searching JNW…</p>';
+    showMessage(container, 'Searching JNW…', {spinner: true});
     showJNWStatus();
 
     const webUrl = jnwWebUrl(query);
@@ -343,10 +343,10 @@ async function searchJNW(query, opts = {}) {
     const hlTokensJ = exactPhrase ? [qNormJ] : tokensJ;
 
     if (!filtered.length) {
-        container.innerHTML = '<p class="message">No matches found.</p>';
+        showMessage(container, MSG_NO_MATCHES);
         jnwCountShowsStatus = false;
         countEl.textContent = (displayAll
-            ? `0 matches for "${query}"`
+            ? matchCountText(0, query)
             : `0 of ${entries.length.toLocaleString()} fetched match${entries.length !== 1 ? 'es' : ''}${fetchedNote}`) + offlineSuffix;
         return;
     }
@@ -355,7 +355,7 @@ async function searchJNW(query, opts = {}) {
         ? `${filtered.length.toLocaleString()} of ${entries.length.toLocaleString()} fetched match${entries.length !== 1 ? 'es' : ''}${fetchedNote}`
         : (filtered.length < numFound
             ? `${filtered.length.toLocaleString()} of ${numFound.toLocaleString()} matches shown`
-            : `${filtered.length.toLocaleString()} match${filtered.length !== 1 ? 'es' : ''} for "${query}"`);
+            : matchCountText(filtered.length, query));
     jnwCountShowsStatus = false;
     countEl.textContent = shown + offlineSuffix;
 
@@ -659,10 +659,10 @@ function jnwOfflineModeActive() {
 }
 
 function updateJNWOfflineUI() {
-    const statusEl = document.getElementById('jnw-offline-status');
-    const toggleEl = document.getElementById('jnw-offline-toggle');
-    const clearBtn = document.getElementById('jnw-clear-backup-btn');
-    const downloadBtn = document.getElementById('jnw-backup-download');
+    const statusEl = $('jnw-offline-status');
+    const toggleEl = $('jnw-offline-toggle');
+    const clearBtn = $('jnw-clear-backup-btn');
+    const downloadBtn = $('jnw-backup-download');
     const hasBackup = !!(jnwBackupMeta && Array.isArray(window._jnwBackupEntries) && window._jnwBackupEntries.length);
 
     if (hasBackup) {
@@ -692,10 +692,7 @@ window.addEventListener('offline', () => {
 
 function setJNWOfflineMode(on) {
     jnwOfflineMode = on;
-    try {
-        localStorage.setItem('jnwOfflineMode', on ? '1' : '0');
-    } catch (e) {
-    }
+    store.set('jnwOfflineMode', on ? '1' : '0');
     updateJNWOfflineUI();
 }
 
@@ -768,7 +765,7 @@ function jnwCrawlStop() {
 }
 
 function waitForUserToContinue() {
-    document.getElementById('jnw-backup-pause-btns').style.display = 'flex';
+    $('jnw-backup-pause-btns').style.display = 'flex';
     return new Promise(resolve => {
         jnwCrawlPauseResolve = resolve;
     });
@@ -870,12 +867,12 @@ async function startJNWBackup() {
     jnwCrawlRunning = true;
     jnwCrawlCancelled = false;
 
-    const progressEl = document.getElementById('jnw-backup-progress');
-    const logEl = document.getElementById('jnw-backup-log');
-    const startBtn = document.getElementById('jnw-backup-start');
-    const cancelBtn = document.getElementById('jnw-backup-cancel');
-    const downloadBtn = document.getElementById('jnw-backup-download');
-    const singleBtn = document.getElementById('jnw-single-letter-btn');
+    const progressEl = $('jnw-backup-progress');
+    const logEl = $('jnw-backup-log');
+    const startBtn = $('jnw-backup-start');
+    const cancelBtn = $('jnw-backup-cancel');
+    const downloadBtn = $('jnw-backup-download');
+    const singleBtn = $('jnw-single-letter-btn');
 
     logEl.textContent = '';
     startBtn.disabled = true;
@@ -898,11 +895,11 @@ async function startJNWBackup() {
             `Paused after "${letter}*" (${i + 1}/${JNW_CRAWL_LETTERS.length}) — ` +
             `${seen.size.toLocaleString()} unique entries so far. Continue to "${JNW_CRAWL_LETTERS[i + 1]}*"?`;
         const shouldContinue = await waitForUserToContinue();
-        document.getElementById('jnw-backup-pause-btns').style.display = 'none';
+        $('jnw-backup-pause-btns').style.display = 'none';
         if (!shouldContinue) break;
     }
 
-    document.getElementById('jnw-backup-pause-btns').style.display = 'none';
+    $('jnw-backup-pause-btns').style.display = 'none';
     window._jnwBackupEntries = Array.from(seen.values());
     progressEl.textContent = jnwCrawlCancelled
         ? `Cancelled — ${seen.size.toLocaleString()} unique entries collected so far.`
@@ -929,17 +926,17 @@ async function startJNWBackup() {
 // rather than starting over, unlike the full multi-letter crawl above.
 async function startJNWSingleLetterCrawl() {
     if (jnwCrawlRunning) return;
-    const letter = document.getElementById('jnw-single-letter-select').value;
+    const letter = $('jnw-single-letter-select').value;
     if (!letter) return;
 
     jnwCrawlRunning = true;
     jnwCrawlCancelled = false;
 
-    const progressEl = document.getElementById('jnw-backup-progress');
-    const logEl = document.getElementById('jnw-backup-log');
-    const startBtn = document.getElementById('jnw-backup-start');
-    const cancelBtn = document.getElementById('jnw-backup-cancel');
-    const singleBtn = document.getElementById('jnw-single-letter-btn');
+    const progressEl = $('jnw-backup-progress');
+    const logEl = $('jnw-backup-log');
+    const startBtn = $('jnw-backup-start');
+    const cancelBtn = $('jnw-backup-cancel');
+    const singleBtn = $('jnw-single-letter-btn');
 
     startBtn.disabled = true;
     cancelBtn.disabled = false;
@@ -1007,8 +1004,7 @@ registerDict('jnw', {
         if (jnwCrawlRunning) jnwCrawlStop(); // don't leave a paused/running crawl unseen
     },
     async init() {
-        document.getElementById('results-jnw').innerHTML =
-            '<p class="message">Type a word and tap Search.</p>';
+        showMessage($('results-jnw'), MSG_PROMPT);
 
         // Restore a previously saved JNW local backup (if any) and the user's
         // last offline-mode preference, so both persist across app launches.
@@ -1017,14 +1013,11 @@ registerDict('jnw', {
             jnwBackupMeta = jnwBackup.meta;
             window._jnwBackupEntries = jnwBackup.entries;
         }
-        try {
-            jnwOfflineMode = localStorage.getItem('jnwOfflineMode') === '1';
-        } catch (e) {
-        }
+        jnwOfflineMode = store.get('jnwOfflineMode') === '1';
         updateJNWOfflineUI();
 
         // Populate the single-letter test/crawl dropdown.
-        const singleSelect = document.getElementById('jnw-single-letter-select');
+        const singleSelect = $('jnw-single-letter-select');
         singleSelect.innerHTML = JNW_CRAWL_LETTERS
             .map(l => `<option value="${l}">${l}*</option>`)
             .join('');
