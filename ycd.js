@@ -4,7 +4,7 @@
 // imported from a saved page (or downloaded from the site), parsed here, stored in
 // IndexedDB, and searched in memory.
 // Uses from app.js: $, store, showMessage/MSG_*, matchCountText, normalizeYiddish*,
-// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, openDB/IDB_*, closeFind,
+// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, idbGet/idbWrite, closeFind,
 // closeSettings, findMatches.
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -16,34 +16,22 @@ let currentMatches = [];   // entries from last search
 // JNW offline backup, so this deletes the two YCD keys rather than clearing the store.
 // Throws if IndexedDB fails; callers decide what to do then.
 async function clearYCDFromDB() {
-    const db = await openDB();
-    const tx = db.transaction(IDB_STORE, 'readwrite');
-    const st = tx.objectStore(IDB_STORE);
-    st.delete('meta');
-    st.delete('entries');
-    await new Promise((res, rej) => {
-        tx.oncomplete = res;
-        tx.onerror = rej;
+    await idbWrite(st => {
+        st.delete('meta');
+        st.delete('entries');
     });
-    db.close();
 }
 
 async function saveData() {
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        const st = tx.objectStore(IDB_STORE);
         // Store metadata and entries separately so we can load metadata fast
-        st.put({
-            source_name: appData.source_name,
-            download_date: appData.download_date
-        }, 'meta');
-        st.put(appData.entries, 'entries');
-        await new Promise((res, rej) => {
-            tx.oncomplete = res;
-            tx.onerror = rej;
+        await idbWrite(st => {
+            st.put({
+                source_name: appData.source_name,
+                download_date: appData.download_date
+            }, 'meta');
+            st.put(appData.entries, 'entries');
         });
-        db.close();
     } catch (e) {
         // Fall back to localStorage if IndexedDB fails
         store.setJSON('dict_backup', appData);
@@ -53,20 +41,7 @@ async function saveData() {
 
 async function loadData() {
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readonly');
-        const st = tx.objectStore(IDB_STORE);
-        const meta = await new Promise((res, rej) => {
-            const r = st.get('meta');
-            r.onsuccess = () => res(r.result);
-            r.onerror = rej;
-        });
-        const entries = await new Promise((res, rej) => {
-            const r = st.get('entries');
-            r.onsuccess = () => res(r.result);
-            r.onerror = rej;
-        });
-        db.close();
+        const [meta, entries] = await idbGet('meta', 'entries');
         if (meta && entries) {
             appData = {...meta, entries};
             return true;

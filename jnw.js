@@ -4,23 +4,17 @@
 // fallbacks), or from a local offline backup that can be crawled, imported and
 // downloaded in Settings.
 // Uses from app.js: $, store, showMessage/MSG_*, matchCountText, normalizeYiddish,
-// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, openDB/IDB_*.
+// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, idbGet/idbWrite.
 // Also uses from relay.js: relayFetchUrl() (the Pi relay is one of the routes
 // fetchWithCorsFallback tries, when it is up).
 
 // ── JNW local backup storage (separate keys, same IndexedDB store) ─────────
 async function saveJNWBackupToDB(meta, entries) {
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        const st = tx.objectStore(IDB_STORE);
-        st.put(meta, 'jnw_backup_meta');
-        st.put(entries, 'jnw_backup_entries');
-        await new Promise((res, rej) => {
-            tx.oncomplete = res;
-            tx.onerror = rej;
+        await idbWrite(st => {
+            st.put(meta, 'jnw_backup_meta');
+            st.put(entries, 'jnw_backup_entries');
         });
-        db.close();
     } catch (e) {
         console.warn('JNW backup save failed:', e);
     }
@@ -28,20 +22,7 @@ async function saveJNWBackupToDB(meta, entries) {
 
 async function loadJNWBackupFromDB() {
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readonly');
-        const st = tx.objectStore(IDB_STORE);
-        const meta = await new Promise((res, rej) => {
-            const r = st.get('jnw_backup_meta');
-            r.onsuccess = () => res(r.result);
-            r.onerror = rej;
-        });
-        const entries = await new Promise((res, rej) => {
-            const r = st.get('jnw_backup_entries');
-            r.onsuccess = () => res(r.result);
-            r.onerror = rej;
-        });
-        db.close();
+        const [meta, entries] = await idbGet('jnw_backup_meta', 'jnw_backup_entries');
         if (meta && entries) return {meta, entries};
     } catch (e) {
         console.warn('JNW backup load failed:', e);
@@ -51,16 +32,10 @@ async function loadJNWBackupFromDB() {
 
 async function clearJNWBackupFromDB() {
     try {
-        const db = await openDB();
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        const st = tx.objectStore(IDB_STORE);
-        st.delete('jnw_backup_meta');
-        st.delete('jnw_backup_entries');
-        await new Promise((res, rej) => {
-            tx.oncomplete = res;
-            tx.onerror = rej;
+        await idbWrite(st => {
+            st.delete('jnw_backup_meta');
+            st.delete('jnw_backup_entries');
         });
-        db.close();
     } catch (e) {
         console.warn('JNW backup clear failed:', e);
     }

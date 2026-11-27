@@ -164,6 +164,54 @@ function openDB() {
     });
 }
 
+// Wraps one IDBRequest in a promise.
+function idbRequest(req) {
+    return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// Reads the values stored under `keys`, as an array in the same order (a key that was
+// never stored comes back undefined). The connection is always closed, even on failure.
+async function idbGet(...keys) {
+    const db = await openDB();
+    try {
+        const st = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE);
+        return await Promise.all(keys.map(k => idbRequest(st.get(k))));
+    } finally {
+        db.close();
+    }
+}
+
+// Runs fn(store) in one readwrite transaction (queue the puts/deletes inside it) and
+// waits until the data is really committed. All-or-nothing: if fn throws, nothing is
+// written. Rejects if the transaction errors or is aborted (e.g. storage quota), and
+// always closes the connection.
+async function idbWrite(fn) {
+    const db = await openDB();
+    try {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        try {
+            fn(tx.objectStore(IDB_STORE));
+        } catch (e) {
+            try {
+                tx.abort();
+            } catch (_) {
+                // already finished: nothing left to roll back, and the real error matters more
+            }
+            throw e;
+        }
+        await new Promise((resolve, reject) => {
+            tx.oncomplete = resolve;
+            tx.onerror = e => reject(e.target.error);
+            tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
+        });
+    } finally {
+        db.close();
+    }
+}
+
 // Shared word-boundary definition: used by both the whole-word filters and
 // the whole-word highlighter, so they can't disagree about what a "word" is.
 // Uses Unicode property escapes (letters, combining marks, digits) rather than
