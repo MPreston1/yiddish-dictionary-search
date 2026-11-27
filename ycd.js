@@ -388,18 +388,65 @@ function handleFile(input) {
     closeSettings();
     const reader = new FileReader();
     reader.onload = e => {
-        finishImport(e.target.result, file.name, '');
+        const text = e.target.result;
+        // A JSON file is a backup made with "Download JSON"; anything else is an HTML page.
+        if (looksLikeJSON(file.name, text)) importBackupJSON(text, file.name);
+        else finishImport(text, file.name, '');
     };
     reader.readAsText(file, 'utf-8');
     input.value = '';
 }
 
+function looksLikeJSON(fileName, text) {
+    return /\.json$/i.test(fileName) || /^\s*[\[{]/.test(text);   // (\s also covers a byte-order mark)
+}
+
+// An entry as parseHTML() makes them: a term plus a list of definition paragraphs
+// (an optional "note" is allowed too). Used to check a backup file before trusting it.
+function isYCDEntry(e) {
+    return !!e && typeof e.term === 'string' && e.term.trim() !== '' &&
+        Array.isArray(e.definition) && e.definition.every(p => typeof p === 'string');
+}
+
+// Restores a dictionary from the JSON that "Download JSON" writes: an object with an
+// "entries" list (and the source name and download date), or just a bare list of entries.
+// Nothing is touched unless the file holds at least one valid entry.
+async function importBackupJSON(text, fileName) {
+    let data;
+    try {
+        data = JSON.parse(text.replace(/^\uFEFF/, ''));
+    } catch (e) {
+        alert('Could not read that file as JSON: ' + e.message);
+        return;
+    }
+    const meta = Array.isArray(data) || !data ? {} : data;
+    const list = Array.isArray(data) ? data : meta.entries;
+    const entries = Array.isArray(list) ? list.filter(isYCDEntry) : [];
+    if (!entries.length) {
+        alert('That JSON file doesn\'t look like a YCD backup (expected entries that each have a "term" ' +
+            'and a "definition" list). A JNW backup goes under "Import Backup File…" in the JNW settings.');
+        return;
+    }
+    const skipped = list.length - entries.length;
+    await loadEntries(
+        entries,
+        (typeof meta.source_name === 'string' && meta.source_name) || fileName,
+        typeof meta.download_date === 'string' ? meta.download_date : '',
+        skipped ? ` (${skipped.toLocaleString()} invalid entr${skipped === 1 ? 'y' : 'ies'} skipped)` : ''
+    );
+}
+
 async function finishImport(html, sourceName, downloadDate) {
     const entries = parseHTML(html);
     if (!entries.length) {
-        alert('No entries found. Make sure the file has a <main> tag and entries separated by blank paragraphs.');
+        alert('No entries found. Make sure the file is a JSON file or an HTML file with a <main> tag and entries separated by blank paragraphs.');
         return;
     }
+    await loadEntries(entries, sourceName, downloadDate);
+}
+
+// Replaces the loaded dictionary with `entries`, saves it, and reports back.
+async function loadEntries(entries, sourceName, downloadDate, note = '') {
     // Explicitly free old data from memory and storage before loading new data,
     // so we don't briefly hold both old and new entries in memory at once.
     appData = {source_name: null, download_date: '', entries: []};
@@ -416,7 +463,7 @@ async function finishImport(html, sourceName, downloadDate) {
     refreshStatus();
     showMessage($('results-ycd'), 'Dictionary loaded. ' + MSG_PROMPT);
     $('count-ycd').textContent = '';
-    alert(`Imported ${entries.length.toLocaleString()} entries from ${sourceName}`);
+    alert(`Imported ${entries.length.toLocaleString()} entries from ${sourceName}${note}`);
 }
 
 // ── Web import ────────────────────────────────────────────────────────────────

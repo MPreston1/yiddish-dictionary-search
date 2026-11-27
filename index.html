@@ -128,7 +128,7 @@
         <section class="settings-section">
             <h3>Settings for YCD</h3>
             <div id="ycd-status" class="modal-progress" style="margin-bottom:6px;">No dictionary loaded.</div>
-            <p>Import from a file already on this device:</p>
+            <p>Import from a file already on this device (an HTML page, or a JSON file saved with Download JSON):</p>
             <button class="btn btn-blue" id="modal-choose-file" onclick="document.getElementById('file-input').click()">
                 Choose File…
             </button>
@@ -223,7 +223,7 @@
 </div>
 
 <!-- Hidden file input -->
-<input id="file-input" type="file" accept=".html,.htm" style="display:none" onchange="handleFile(this)">
+<input id="file-input" type="file" accept=".html,.htm,application/json,.json" style="display:none" onchange="handleFile(this)">
 
 <script src="app.js"></script>
 <script src="ycd.js"></script>
