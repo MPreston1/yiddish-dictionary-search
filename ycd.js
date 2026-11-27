@@ -445,6 +445,7 @@ async function startWebImport() {
         }
 
         const today = new Date().toISOString().slice(0, 10);
+        progress.textContent = '';   // the download is done: don't leave "Downloading…" showing in Settings
         closeSettings();
         finishImport(html, url, today);
 
