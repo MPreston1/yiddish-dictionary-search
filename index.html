@@ -31,10 +31,7 @@
                 </svg>
             </button>
         </div>
-        <div id="btn-row">
-            <!-- Find is hidden for now; remove "hidden" to bring the button back (the find bar code is intact) -->
-            <button class="btn btn-grey" onclick="toggleFind()" style="margin-left:auto" hidden>Find</button>
-        </div>
+        <div id="btn-row"></div>
     </div>
 
     <!-- Search bar -->
@@ -104,16 +101,6 @@
             </div>
             <div class="col-body" id="results-ceyd"><p class="message">Type a word and tap Search.</p></div>
         </div>
-    </div>
-
-    <!-- Find bar -->
-    <div id="findbar">
-        <input id="find-input" type="search" placeholder="Find in results…" autocorrect="off" autocapitalize="none"
-               spellcheck="false" oninput="findReset()" onkeydown="if(event.key==='Enter')findNext()">
-        <button class="find-btn" onclick="findPrev()">‹</button>
-        <button class="find-btn" onclick="findNext()">›</button>
-        <span id="find-count"></span>
-        <button class="find-btn" id="find-close" onclick="closeFind()">✕</button>
     </div>
 </div>
 

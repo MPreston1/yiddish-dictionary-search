@@ -4,7 +4,7 @@
 //   app.js (this file) -> ycd.js -> jnw.js -> relay.js -> ceyd.js
 // This file holds what the dictionaries share (small helpers, text normalization,
 // highlighting, the dictionary toggles/tabs, the search entry point, Settings shell,
-// find bar, Yiddish keyboard). Each dictionary lives in its own file and plugs in through
+// Yiddish keyboard). Each dictionary lives in its own file and plugs in through
 // registerDict(). These are plain scripts, so top-level names are shared between
 // the files, and onclick="..." handlers in index.html can still reach them.
 
@@ -149,12 +149,6 @@ function findChunkForNormIndex(chunks, idx) {
     }
     return null;
 }
-
-// ── State ────────────────────────────────────────────────────────────────────
-let findMatches = [];    // the <span class="find-hl"> elements for find-in-page (ycd.js resets this too: keep the name)
-let findIndex = -1;
-const FIND_HL_COLOR = '#FFE082';
-const FIND_HL_CURRENT = '#FF9800';
 
 // ── Persistence via IndexedDB ─────────────────────────────────────────────────
 // IndexedDB is far more persistent than localStorage on iOS PWAs --
@@ -331,8 +325,6 @@ function toggleDict(which) {
 function showResultTab(which) {
     activeResultTab = which;
     syncScopeUI();
-    // Find only looks at the visible dictionary, so refresh it for the new tab.
-    if ($('findbar').classList.contains('open')) findReset();
 }
 
 // Reflect the selection in the buttons, and set up the phone tabs.
@@ -381,9 +373,6 @@ function doSearch() {
     const enabled = enabledDicts();
     const order = enabled.sort((a, b) => !!dictModules[a].local - !!dictModules[b].local);
     for (const d of order) dictModules[d].search(query, opts);
-
-    // The YCD search resets the find bar itself; if YCD is off, do it here.
-    if (!enabled.includes('ycd')) closeFind();
 }
 
 // ── Highlighting (used by YCD and JNW) ───────────────────────────────────────
@@ -513,124 +502,6 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// ── Find in results ───────────────────────────────────────────────────────────
-function toggleFind() {
-    const bar = $('findbar');
-    if (bar.classList.contains('open')) {
-        closeFind();
-    } else {
-        bar.classList.add('open');
-        $('find-input').focus();
-    }
-}
-
-// Drops the highlights and the match list and blanks the counter. (The bar's own
-// open/closed state and the typed query are left to the caller.)
-function clearFindState() {
-    clearFindHighlights();
-    findMatches = [];
-    findIndex = -1;
-    $('find-count').textContent = '';
-}
-
-function closeFind() {
-    $('findbar').classList.remove('open');
-    $('find-input').value = '';
-    clearFindState();
-}
-
-function findReset() {
-    clearFindState();
-    const q = $('find-input').value.trim();
-    if (!q) return;
-    buildFindMatches(q);
-    if (findMatches.length) {
-        findIndex = 0;
-        scrollToFind();
-    }
-    updateFindCount();
-}
-
-// Moves to the next (+1) or previous (-1) match, wrapping around. With no matches
-// yet (e.g. the query was just typed) it runs the search instead.
-function stepFind(delta) {
-    if (!findMatches.length) {
-        findReset();
-        return;
-    }
-    findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
-    scrollToFind();
-    updateFindCount();
-}
-
-function findNext() {
-    stepFind(1);
-}
-
-function findPrev() {
-    stepFind(-1);
-}
-
-function updateFindCount() {
-    const el = $('find-count');
-    el.textContent = findMatches.length
-        ? `${findIndex + 1} of ${findMatches.length}`
-        : 'No matches';
-}
-
-// Find works by wrapping text nodes in <span class="find-hl"> elements
-function buildFindMatches(query) {
-    const container = $('results-columns');
-    const q = query.toLowerCase();
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
-        acceptNode(n) {
-            const el = n.parentElement;
-            if (!el || el.closest('#result-tabs')) return NodeFilter.FILTER_REJECT;
-            const col = el.closest('.result-col');
-            return col && col.offsetParent === null ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-        }
-    });
-    const hits = [];
-    let node;
-    while ((node = walker.nextNode())) {
-        const lower = node.textContent.toLowerCase();
-        for (const [start, end] of indexOfAll(lower, q)) hits.push({node, start, end});
-    }
-
-    // Wrap hits in spans (process in reverse to preserve offsets)
-    const spans = [];
-    for (let i = hits.length - 1; i >= 0; i--) {
-        const {node, start, end} = hits[i];
-        const range = document.createRange();
-        range.setStart(node, start);
-        range.setEnd(node, end);
-        const span = document.createElement('span');
-        span.className = 'find-hl';
-        span.style.background = FIND_HL_COLOR;
-        span.style.borderRadius = '2px';
-        range.surroundContents(span);
-        spans.push(span);
-    }
-    findMatches = spans.reverse();   // collected last-to-first; flip into document order
-}
-
-function clearFindHighlights() {
-    document.querySelectorAll('.find-hl').forEach(span => {
-        span.replaceWith(document.createTextNode(span.textContent));
-    });
-    // Merge adjacent text nodes
-    $('results-columns').normalize();
-}
-
-function scrollToFind() {
-    findMatches.forEach((s, i) => {
-        s.style.background = i === findIndex ? FIND_HL_CURRENT : FIND_HL_COLOR;
-    });
-    if (findMatches[findIndex]) {
-        findMatches[findIndex].scrollIntoView({behavior: 'smooth', block: 'center'});
-    }
-}
-
 // ── Enter key on search ───────────────────────────────────────────────────────
 $('search-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') doSearch();
@@ -675,9 +546,6 @@ const YK_MAP = {
     Semicolon: [';', ':', '…']
 };
 
-// The boxes the Yiddish keyboard works in.
-const YID_INPUT_IDS = ['search-input', 'find-input'];
-
 let yiddishOn = store.get('yiddishTyping') === '1';
 let yidLastWasTilde = false;
 // Pressing one of these alone types nothing and doesn't break a "~~" pair.
@@ -688,7 +556,7 @@ function updateYiddishUI() {
     btn.textContent = yiddishOn ? 'א' : 'A';
     btn.classList.toggle('on', yiddishOn);
     btn.setAttribute('aria-pressed', yiddishOn ? 'true' : 'false');
-    YID_INPUT_IDS.forEach(id => $(id).classList.toggle('yid-on', yiddishOn));
+    $('search-input').classList.toggle('yid-on', yiddishOn);
 }
 
 function setYiddish(on) {
@@ -738,7 +606,7 @@ function yiddishKeydown(e) {
     insertAtCursor(e.target, out);
 }
 
-YID_INPUT_IDS.forEach(id => $(id).addEventListener('keydown', yiddishKeydown));
+$('search-input').addEventListener('keydown', yiddishKeydown);
 
 const yidBtn = $('yid-toggle');
 yidBtn.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the box

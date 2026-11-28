@@ -167,7 +167,7 @@ html, body {
     background: var(--accent);
 }
 
-#search-input.yid-on, #find-input.yid-on {
+#search-input.yid-on {
     border-color: var(--accent);
 }
 
@@ -539,60 +539,6 @@ mark {
 
 .jnw-fallback a {
     color: var(--accent);
-}
-
-/* ── Find bar ── */
-#findbar {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--card);
-    border-top: 1px solid var(--border);
-    flex-wrap: nowrap;
-}
-
-#findbar.open {
-    display: flex;
-}
-
-#find-input {
-    flex: 1;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 8px;
-    font-size: 14px;
-    background: var(--bg);
-    color: var(--text);
-    outline: none;
-    -webkit-appearance: none;
-    min-width: 0;
-}
-
-#find-input:focus {
-    border-color: var(--accent);
-}
-
-#find-count {
-    font-size: 11px;
-    color: var(--muted);
-    white-space: nowrap;
-}
-
-.find-btn {
-    border: none;
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    background: var(--accent);
-    color: #fff;
-    white-space: nowrap;
-}
-
-#find-close {
-    background: #888;
 }
 
 /* ── Modal overlays (shared by import modal + JNW backup modal) ── */

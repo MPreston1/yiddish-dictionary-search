@@ -4,8 +4,7 @@
 // imported from a saved page (or downloaded from the site), parsed here, stored in
 // IndexedDB, and searched in memory.
 // Uses from app.js: $, store, showMessage/MSG_*, matchCountText, normalizeYiddish*,
-// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, idbGet/idbWrite, closeFind,
-// closeSettings, findMatches.
+// highlightTokens, WB_PRE/WB_POST, escapeRegex, escapeHTML, idbGet/idbWrite, closeSettings.
 
 // ── State ────────────────────────────────────────────────────────────────────
 let appData = {source_name: null, download_date: '', entries: []};
@@ -324,8 +323,6 @@ function searchYCD(query, {wholeWord = false, exactPhrase = false} = {}) {
     // For normal mode, highlight each individual token.
     const hlTokens = exactPhrase ? [qNorm] : tokens;
     renderResults(currentMatches, hlTokens, wholeWord);
-    // Reset find state
-    closeFind(true);
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -471,7 +468,6 @@ async function loadEntries(entries, sourceName, downloadDate, note = '') {
     // so we don't briefly hold both old and new entries in memory at once.
     appData = {source_name: null, download_date: '', entries: []};
     currentMatches = [];
-    findMatches = [];
     try {
         await clearYCDFromDB();
     } catch (e) {
@@ -546,7 +542,6 @@ async function clearDictionary() {
     // the entry objects immediately.
     appData = {source_name: null, download_date: '', entries: []};
     currentMatches = [];
-    findMatches = [];
 
     // Await the async delete so IndexedDB is fully cleared before we return.
     // We explicitly delete the YCD records (not just overwrite them with empty
