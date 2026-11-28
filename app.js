@@ -551,11 +551,13 @@ let yidLastWasTilde = false;
 // Pressing one of these alone types nothing and doesn't break a "~~" pair.
 const YK_MODIFIER_KEYS = new Set(['Shift', 'Alt', 'Control', 'Meta', 'CapsLock']);
 
+// The button that switches the Yiddish keyboard on and off.
+const yidBtn = $('yid-toggle');
+
 function updateYiddishUI() {
-    const btn = $('yid-toggle');
-    btn.textContent = yiddishOn ? 'א' : 'A';
-    btn.classList.toggle('on', yiddishOn);
-    btn.setAttribute('aria-pressed', yiddishOn ? 'true' : 'false');
+    yidBtn.textContent = yiddishOn ? 'א' : 'A';
+    yidBtn.classList.toggle('on', yiddishOn);
+    yidBtn.setAttribute('aria-pressed', yiddishOn ? 'true' : 'false');
     $('search-input').classList.toggle('yid-on', yiddishOn);
 }
 
@@ -608,7 +610,6 @@ function yiddishKeydown(e) {
 
 $('search-input').addEventListener('keydown', yiddishKeydown);
 
-const yidBtn = $('yid-toggle');
 yidBtn.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the box
 yidBtn.addEventListener('click', () => {
     setYiddish(!yiddishOn);
