@@ -253,6 +253,25 @@ function bidiTermDisplay(text) {
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
+// What a search looks at for each entry: its term and its definition, lower-cased and
+// normalized. Worked out once per entry (on the first search after loading) instead of on
+// every search. It lives in a WeakMap keyed by the entry, so nothing extra is added to the
+// entries themselves (they are saved to IndexedDB and written into backups), and a
+// replaced dictionary takes its cache with it.
+const searchTextCache = new WeakMap();
+
+function searchTextOf(entry) {
+    let text = searchTextCache.get(entry);
+    if (!text) {
+        text = {
+            t: normalizeYiddish(entry.term.toLowerCase()),
+            d: normalizeYiddish(entry.definition.join(' ').toLowerCase()),
+        };
+        searchTextCache.set(entry, text);
+    }
+    return text;
+}
+
 function searchYCD(query, {wholeWord = false, exactPhrase = false} = {}) {
     const entries = appData.entries;
     const results = $('results-ycd');
@@ -273,30 +292,31 @@ function searchYCD(query, {wholeWord = false, exactPhrase = false} = {}) {
     const qNorm = normalizeYiddish(query.toLowerCase());
     const tokens = qNorm.split(/\s+/).filter(Boolean);
 
+    // Built once per search, not once per entry
+    const phraseRe = exactPhrase && wholeWord
+        ? new RegExp(WB_PRE + escapeRegex(qNorm) + WB_POST, 'u')
+        : null;
+    const tokenTests = tokens.map(token => {
+        if (!wholeWord) return hay => hay.includes(token);
+        const re = new RegExp(WB_PRE + escapeRegex(token) + WB_POST, 'u');
+        return hay => re.test(hay);
+    });
 
-    function entryMatches(term, defnText) {
-        const t = normalizeYiddish(term.toLowerCase());
-        const d = normalizeYiddish(defnText.toLowerCase());
-        if (exactPhrase && wholeWord) {
+    function entryMatches(entry) {
+        const {t, d} = searchTextOf(entry);
+        if (phraseRe) {
             // Both conditions together: the whole phrase, adjacent/in-order,
             // AND bounded by word boundaries at its start and end (so it can't
             // be embedded inside a longer word).
-            const re = new RegExp(WB_PRE + escapeRegex(qNorm) + WB_POST, 'u');
-            return re.test(t) || re.test(d);
+            return phraseRe.test(t) || phraseRe.test(d);
         }
         if (exactPhrase) {
             return t.includes(qNorm) || d.includes(qNorm);
         }
-        for (const token of tokens) {
-            const tok = hay => wholeWord
-                ? new RegExp(WB_PRE + escapeRegex(token) + WB_POST, 'u').test(hay)
-                : hay.includes(token);
-            if (!tok(t) && !tok(d)) return false;
-        }
-        return true;
+        return tokenTests.every(test => test(t) || test(d));
     }
 
-    currentMatches = entries.filter(e => entryMatches(e.term, e.definition.join(' ')));
+    currentMatches = entries.filter(entryMatches);
     const count = currentMatches.length;
     countEl.textContent = matchCountText(count, query);
 

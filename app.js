@@ -121,8 +121,18 @@ function normalizeYiddishWithMap(text) {
     return {normalized, chunks};
 }
 
+// The same rules as one pattern, for callers that only need the normalized text (searching
+// does this for every entry): a lone expanding character, or a base letter followed by the
+// mark that is dropped. Built from the two tables above, so the rules still live in one
+// place; normalizeYiddishWithMap() above stays the reference these must agree with.
+const NORM_PATTERN = new RegExp(
+    '[' + Object.keys(NORM_EXPAND).join('') + ']|' +
+    Object.entries(NORM_DROP_MARK).map(([base, mark]) => base + mark).join('|'),
+    'g'
+);
+
 function normalizeYiddish(text) {
-    return normalizeYiddishWithMap(text).normalized;
+    return text.replace(NORM_PATTERN, m => NORM_EXPAND[m] || m[0]);
 }
 
 // Finds the chunk containing a given index into the normalized string
@@ -377,6 +387,22 @@ function doSearch() {
 }
 
 // ── Highlighting (used by YCD and JNW) ───────────────────────────────────────
+// Compiled whole-word patterns, kept between calls: highlightTokens() runs once per
+// paragraph with the same few tokens. (Global patterns carry a position, so it is reset
+// each time one is handed out.)
+const wholeWordRegexCache = new Map();
+
+function wholeWordRegex(token) {
+    let re = wholeWordRegexCache.get(token);
+    if (!re) {
+        if (wholeWordRegexCache.size >= 200) wholeWordRegexCache.clear();
+        re = new RegExp(WB_PRE + escapeRegex(token) + WB_POST, 'gu');
+        wholeWordRegexCache.set(token, re);
+    }
+    re.lastIndex = 0;
+    return re;
+}
+
 function highlightTokens(text, tokens, wholeWord = false) {
     if (!tokens || !tokens.length) return escapeHTML(text);
 
@@ -385,14 +411,13 @@ function highlightTokens(text, tokens, wholeWord = false) {
     // the original text so the HTML we build preserves whatever the
     // original characters actually were (e.g. a rafe diacritic that
     // normalization would otherwise have discarded).
-    const {normalized, chunks} = normalizeYiddishWithMap(text);
-    const lower = normalized.toLowerCase();
+    const lower = normalizeYiddish(text).toLowerCase();
     const ranges = [];
     for (const token of tokens) {
         if (wholeWord) {
             // Only highlight occurrences bounded by non-word characters, matching
             // the whole-word filter used when selecting results.
-            const re = new RegExp(WB_PRE + escapeRegex(token) + WB_POST, 'gu');
+            const re = wholeWordRegex(token);
             let m;
             while ((m = re.exec(lower)) !== null) {
                 ranges.push([m.index, m.index + m[0].length]);
@@ -403,6 +428,10 @@ function highlightTokens(text, tokens, wholeWord = false) {
         }
     }
     if (!ranges.length) return escapeHTML(text);
+
+    // Only a paragraph that really has matches needs the character-by-character map back
+    // to the original text, and building it is the costly part.
+    const {chunks} = normalizeYiddishWithMap(text);
 
     // Map each normalized-coordinate range to original-text coordinates.
     // If a match only partially overlaps a chunk (e.g. it lands on just one
